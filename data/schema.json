@@ -1,0 +1,22 @@
+{
+  "columns": [
+    "id",
+    "dealname",
+    "dealstage",
+    "closedate",
+    "hs_deal_stage_probability",
+    "amount",
+    "target_start_date",
+    "target_end_date",
+    "notes_last_updated"
+  ],
+  "dealstages": [
+    "Closed Won",
+    "Closed Won Complete",
+    "Discovery",
+    "Enrichment",
+    "Outreach",
+    "Proposal",
+    "Renewal"
+  ]
+}

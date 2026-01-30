@@ -1,10 +1,31 @@
-"""Upload data to Google Sheets."""
+"""Upload deals DataFrame to Google Sheets."""
 
 import os
-from typing import Any, Dict, List
+from typing import List
 
 import gspread
 import pandas as pd
+
+
+# Maps HubSpot property names to display column headers
+COLUMN_MAP = {
+    "id": "Record ID",
+    "dealname": "Deal Name",
+    "dealstage": "Deal Stage",
+    "closedate": "Close Date",
+    "hs_deal_stage_probability": "Deal probability",
+    "amount": "Amount",
+    "target_start_date": "Target Start Date",
+    "target_end_date": "Target End Date",
+    "notes_last_updated": "Last Activity Date",
+}
+
+DATE_COLUMNS = [
+    "closedate",
+    "target_start_date",
+    "target_end_date",
+    "notes_last_updated",
+]
 
 
 def get_sheets_client():
@@ -15,59 +36,47 @@ def get_sheets_client():
             "Missing GOOGLE_SERVICE_ACCOUNT_FILE environment variable. "
             "Add it to your .env file."
         )
-
     return gspread.service_account(filename=service_account_file)
 
 
-def deals_to_rows(deals_data: Dict[str, Any]) -> List[List[str]]:
-    """Convert HubSpot deals data to rows for Google Sheets."""
-    results = deals_data.get("results", [])
+def format_for_sheets(df: pd.DataFrame) -> List[List[str]]:
+    """Format DataFrame for Google Sheets upload.
 
-    if not results:
-        return [["No data available"]]
+    - Formats all date columns to YYYY-MM-DD
+    - Sorts by close date (most recent first)
+    - Renames columns to display names
+    - Returns list of rows including header
+    """
+    df = df.copy()
 
-    # Convert to pandas DataFrame
-    df = pd.json_normalize(results)
-    df.columns = df.columns.str.replace("properties.", "", regex=False)
+    # Ensure all expected columns exist
+    for col in COLUMN_MAP:
+        if col not in df.columns:
+            df[col] = ""
 
-    # Get the column order from the original properties (preserve API order)
-    # Start with 'id', then add property columns in the order they appear in first result
-    if results:
-        first_props = results[0].get("properties", {})
-        desired_order = ["id"] + list(first_props.keys())
-        # Only include columns that exist in the dataframe
-        column_order = [col for col in desired_order if col in df.columns]
-        # Add any remaining columns that weren't in the first result
-        remaining_cols = [col for col in df.columns if col not in column_order]
-        column_order.extend(remaining_cols)
-        df = df[column_order]
+    # Format date columns to YYYY-MM-DD
+    for col in DATE_COLUMNS:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
 
-    # Convert target_start_date to datetime for sorting
-    if "target_start_date" in df.columns:
-        df["target_start_date"] = pd.to_datetime(
-            df["target_start_date"], errors="coerce"
-        )
-        # Sort by target start date ascending (earliest first)
-        df = df.sort_values("target_start_date", ascending=True)
+    # Sort by close date descending
+    if "closedate" in df.columns:
+        df["_sort_date"] = pd.to_datetime(df["closedate"], errors="coerce")
+        df = df.sort_values("_sort_date", ascending=False, na_position="last")
+        df = df.drop(columns=["_sort_date"])
 
-    # Convert to rows (header + data)
-    rows = [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
+    # Select and rename columns
+    df = df[[col for col in COLUMN_MAP if col in df.columns]]
+    df = df.rename(columns=COLUMN_MAP)
 
-    return rows
+    # Convert to list of lists
+    return [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
 
 
-def upload_deals_to_sheet(
-    client, sheet_id: str, tab_name: str, deals_data: Dict[str, Any]
-) -> None:
-    """Upload deals data to a Google Sheet."""
-    # Open the sheet
-    sheet = client.open_by_key(sheet_id)
-    worksheet = sheet.worksheet(tab_name)
+def upload_to_sheet(client, sheet_id: str, tab_name: str, df: pd.DataFrame) -> None:
+    """Upload DataFrame to a Google Sheet tab."""
+    rows = format_for_sheets(df)
 
-    # Convert deals to rows
-    rows = deals_to_rows(deals_data)
-
-    # Clear existing data and upload new data
+    worksheet = client.open_by_key(sheet_id).worksheet(tab_name)
     worksheet.clear()
-    # Use USER_ENTERED so Google Sheets parses dates, numbers, etc. automatically
     worksheet.update(rows, value_input_option="USER_ENTERED")

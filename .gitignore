@@ -1,6 +1,8 @@
 .env
 *.json
 !package.json
+!data/schema.json
+data/deals.csv
 __pycache__/
 *.py[cod]
 *$py.class

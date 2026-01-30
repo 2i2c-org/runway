@@ -1,0 +1,43 @@
+name: Sync HubSpot to Google Sheets
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'  # Weekly on Monday at 9am UTC
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv and nox
+        run: pip install uv nox
+
+      - name: Write Google service account file
+        run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service-account-key.json
+
+      - name: Download data from HubSpot
+        env:
+          HUBSPOT_ACCESS_TOKEN: ${{ secrets.HUBSPOT_ACCESS_TOKEN }}
+        run: nox -s download
+
+      - name: Run tests
+        run: nox -s test
+
+      - name: Upload to Google Sheets
+        env:
+          GOOGLE_SERVICE_ACCOUNT_FILE: service-account-key.json
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SHEET_TAB: ${{ vars.GOOGLE_SHEET_TAB || 'HubSpot Deals' }}
+        run: nox -s update
+
+      - name: Clean up credentials
+        if: always()
+        run: rm -f service-account-key.json

@@ -1,63 +1,62 @@
 # HubSpot to Google Sheets Sync
 
-This repository provides a script that syncs HubSpot deals data to a Google Sheet.
+Syncs HubSpot deals data to a Google Sheet.
 
-- Fetches latest HubSpot deals data using the HubSpot API
-- Supports both HubSpot API client and REST API fallback
-- Uploads data to a specified Google Sheet tab
+## What it does
+
+1. Downloads all deals from HubSpot (excludes "closedlost")
+2. Validates data matches expected schema
+3. Uploads to a Google Sheet tab
 
 ## Setup
 
-### 1. Install dependencies
+Set these environment variables (or add to `.env` file):
 
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure environment variables
-
-This expects a few environment variables to be defined in your global environment or in an `.env` file:
-- `HUBSPOT_ACCESS_TOKEN`: Your HubSpot private app access token
-- `GOOGLE_SERVICE_ACCOUNT_FILE`: Path to your Google service account JSON file
-- `GOOGLE_SHEET_ID`: The ID of your target Google Sheet (from the URL)
-- `GOOGLE_SHEET_TAB`: The name of the sheet tab (default: "HubSpot Deals")
+- `HUBSPOT_ACCESS_TOKEN`: HubSpot private app access token
+- `GOOGLE_SERVICE_ACCOUNT_FILE`: Path to Google service account JSON file
+- `GOOGLE_SHEET_ID`: Target Google Sheet ID (from the URL)
+- `GOOGLE_SHEET_TAB`: Sheet tab name (default: "HubSpot Deals")
 
 ## Usage
 
-### Using nox (recommended)
-
-Run the sync with nox, which automatically handles the environment:
-
 ```bash
+# Download data from HubSpot
+nox -s download
+
+# Run tests (validates schema)
+nox -s test
+
+# Upload to Google Sheets
 nox -s update
+
+# Do all three in sequence
+nox -s download-and-update
 ```
 
-The script will:
-1. Fetch deals from HubSpot (using view filters if `HUBSPOT_VIEW_ID` is set)
-2. Connect to your Google Sheet
-3. Clear the specified tab
-4. Upload the latest data
-5. Deals are sorted by `target_start_date` (latest first)
+## Schema Validation
 
-### Using HubSpot Views
+The test suite validates that downloaded data matches `data/schema.json`:
+- Expected columns are present
+- Deal stage values match expected set
 
-You can configure the script to use a specific HubSpot view's filters by setting `HUBSPOT_VIEW_ID` in your `.env` file:
+If HubSpot's schema changes, update `data/schema.json` accordingly.
 
-```bash
-# Get the view ID from your HubSpot view URL
-# https://app-na2.hubspot.com/contacts/{PORTAL_ID}/objects/0-3/views/{VIEW_ID}/list
-HUBSPOT_VIEW_ID=341811851
-```
+## GitHub Actions
 
-When set, the script will:
-1. Fetch the view's filter configuration from HubSpot
-2. Apply those filters server-side using the Search API
-3. Only fetch deals that match your view's criteria
+The workflow runs weekly (Monday 9am UTC) or manually. It downloads, tests, then uploads.
 
-This is more efficient than fetching all deals and filtering client-side.
+**Required secrets:**
+- `HUBSPOT_ACCESS_TOKEN`
+- `GOOGLE_SERVICE_ACCOUNT_JSON` (full JSON content)
+- `GOOGLE_SHEET_ID`
 
-## Architecture
+**Optional variables:**
+- `GOOGLE_SHEET_TAB` (default: "HubSpot Deals")
 
-- `src/hubspot_fetcher.py` - HubSpot API integration
-- `src/sheets_uploader.py` - Google Sheets upload
-- `sync_hubspot_to_sheets.py` - Main orchestration script
+## Files
+
+- `src/hubspot_fetcher.py` - Fetches deals from HubSpot
+- `src/sheets_uploader.py` - Formats and uploads to Google Sheets
+- `scripts/download_data.py` - Downloads deals to `data/deals.csv`
+- `scripts/upload_data.py` - Uploads from `data/deals.csv`
+- `data/schema.json` - Expected columns and deal stages

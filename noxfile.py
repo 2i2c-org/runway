@@ -5,7 +5,29 @@ nox.options.reuse_existing_virtualenvs = True
 
 
 @nox.session
-def update(session):
-    """Sync HubSpot deals data to Google Sheets."""
+def download(session):
+    """Download latest deals from HubSpot."""
     session.install("-r", "requirements.txt")
-    session.run("python", "sync_hubspot_to_sheets.py")
+    session.run("python", "scripts/download_data.py")
+
+
+@nox.session
+def test(session):
+    """Run tests on downloaded data."""
+    session.install("-r", "requirements.txt")
+    session.run("pytest", "tests/", "-v")
+
+
+@nox.session
+def update(session):
+    """Upload downloaded deals to Google Sheets."""
+    session.install("-r", "requirements.txt")
+    session.run("python", "scripts/upload_data.py")
+
+
+@nox.session(name="download-and-update")
+def download_and_update(session):
+    """Download, test, and upload in sequence."""
+    session.notify("download")
+    session.notify("test")
+    session.notify("update")
