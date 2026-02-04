@@ -20,7 +20,7 @@ def test(session):
 
 @nox.session
 def update(session):
-    """Upload downloaded deals to Google Sheets."""
+    """Upload downloaded deals and KPI MAU table to Google Sheets."""
     session.install("-r", "requirements.txt")
     session.run("python", "scripts/upload_data.py")
 

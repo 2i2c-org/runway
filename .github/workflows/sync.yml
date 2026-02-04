@@ -34,8 +34,6 @@ jobs:
       - name: Upload to Google Sheets
         env:
           GOOGLE_SERVICE_ACCOUNT_FILE: service-account-key.json
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_SHEET_TAB: ${{ vars.GOOGLE_SHEET_TAB || 'HubSpot Deals' }}
         run: nox -s update
 
       - name: Clean up credentials

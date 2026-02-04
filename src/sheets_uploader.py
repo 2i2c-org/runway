@@ -1,7 +1,7 @@
-"""Upload deals DataFrame to Google Sheets."""
+"""Upload DataFrames to Google Sheets."""
 
 import os
-from typing import List
+from typing import List, Optional
 
 import gspread
 import pandas as pd
@@ -73,10 +73,48 @@ def format_for_sheets(df: pd.DataFrame) -> List[List[str]]:
     return [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()
 
 
+def dataframe_to_rows(df: pd.DataFrame) -> List[List[object]]:
+    """Convert a DataFrame to rows for Sheets upload."""
+    df = df.copy()
+    df = df.where(pd.notnull(df), "")
+    return [df.columns.tolist()] + df.values.tolist()
+
+
+def _get_worksheet(spreadsheet, tab_name: Optional[str], worksheet_gid: Optional[int]):
+    if worksheet_gid is not None:
+        try:
+            worksheet = spreadsheet.get_worksheet_by_id(int(worksheet_gid))
+        except AttributeError:
+            worksheet = None
+        if worksheet is not None:
+            return worksheet
+    if tab_name:
+        return spreadsheet.worksheet(tab_name)
+    raise RuntimeError("Worksheet not found: provide worksheet gid or tab name.")
+
+
 def upload_to_sheet(client, sheet_id: str, tab_name: str, df: pd.DataFrame) -> None:
     """Upload DataFrame to a Google Sheet tab."""
     rows = format_for_sheets(df)
 
     worksheet = client.open_by_key(sheet_id).worksheet(tab_name)
+    worksheet.clear()
+    worksheet.update(rows, value_input_option="USER_ENTERED")
+
+
+def upload_dataframe(
+    client,
+    sheet_id: str,
+    df: pd.DataFrame,
+    *,
+    worksheet_gid: Optional[int] = None,
+    tab_name: Optional[str] = None,
+) -> None:
+    """Upload DataFrame to a Google Sheet tab by gid (preferred) or name."""
+    rows = dataframe_to_rows(df)
+    spreadsheet = client.open_by_key(sheet_id)
+    worksheet = _get_worksheet(
+        spreadsheet, tab_name=tab_name, worksheet_gid=worksheet_gid
+    )
     worksheet.clear()
     worksheet.update(rows, value_input_option="USER_ENTERED")

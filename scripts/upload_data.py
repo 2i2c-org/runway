@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Upload downloaded deals to Google Sheets."""
+"""Upload HubSpot deals + KPI MAU data to Google Sheets."""
 
-import os
 import sys
 from pathlib import Path
 
@@ -10,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 from dotenv import load_dotenv
 
-from src.sheets_uploader import get_sheets_client, upload_to_sheet
+from src.kpi_mau_fetcher import fetch_mau_table
+from src.sheets_uploader import get_sheets_client, upload_dataframe, upload_to_sheet
 
 load_dotenv()
 
@@ -21,17 +21,18 @@ if not DATA_FILE.exists():
     print("Run 'nox -s download' first.")
     sys.exit(1)
 
-sheet_id = os.environ.get("GOOGLE_SHEET_ID")
-tab_name = os.environ.get("GOOGLE_SHEET_TAB", "HubSpot Deals")
-
-if not sheet_id:
-    print("Error: Missing GOOGLE_SHEET_ID environment variable")
-    sys.exit(1)
+SHEET_ID = "1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8"
+HUBSPOT_TAB = "Data: HubSpot"
+MAU_TAB = "Data: MAUs"
 
 df = pd.read_csv(DATA_FILE)
-print(f"Uploading {len(df)} deals to sheet {sheet_id} tab '{tab_name}'...")
+print(f"Uploading {len(df)} deals to sheet {SHEET_ID} tab '{HUBSPOT_TAB}'...")
 
 client = get_sheets_client()
-upload_to_sheet(client, sheet_id, tab_name, df)
+upload_to_sheet(client, SHEET_ID, HUBSPOT_TAB, df)
+
+mau_df = fetch_mau_table()
+print(f"Uploading KPI MAU table ({len(mau_df)} rows) to sheet {SHEET_ID}...")
+upload_dataframe(client, SHEET_ID, mau_df, tab_name=MAU_TAB)
 
 print(f"Done! Uploaded {len(df)} deals.")

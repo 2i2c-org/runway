@@ -1,12 +1,18 @@
-# HubSpot to Google Sheets Sync
+# HubSpot + KPI MAU to Google Sheets Sync
 
-Syncs HubSpot deals data to a Google Sheet.
+Syncs HubSpot deals data and KPI MAU summaries to our [budget projections google worksheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8/edit?gid=1551246221#gid=1551246221).
+We use this to make revenue projections based on this data.
 
 ## What it does
 
+**HubSpot Deals Data**:
 1. Downloads all deals from HubSpot (excludes "closedlost")
 2. Validates data matches expected schema
-3. Uploads to a Google Sheet tab
+3. Uploads deals to a Google Sheet tab
+
+**Hub MAUs Data**:
+1. Downloads the KPI MAU CSV linked from [our KPIs page](https://2i2c.org/kpis/cloud/)
+2. Uploads the raw MAU table to a Google Sheet tab
 
 ## Setup
 
@@ -14,8 +20,8 @@ Set these environment variables (or add to `.env` file):
 
 - `HUBSPOT_ACCESS_TOKEN`: HubSpot private app access token
 - `GOOGLE_SERVICE_ACCOUNT_FILE`: Path to Google service account JSON file
-- `GOOGLE_SHEET_ID`: Target Google Sheet ID (from the URL)
-- `GOOGLE_SHEET_TAB`: Sheet tab name (default: "HubSpot Deals")
+
+All other information about where to put data (tab names etc) is hard-coded in the scripts.
 
 ## Usage
 
@@ -33,30 +39,12 @@ nox -s update
 nox -s download-and-update
 ```
 
-## Schema Validation
+## Testing
 
-The test suite validates that downloaded data matches `data/schema.json`:
-- Expected columns are present
-- Deal stage values match expected set
+There is lightweight testing to ensure that the underlying data structure hasn't changed in HubSpot etc.
 
-If HubSpot's schema changes, update `data/schema.json` accordingly.
+If we change the columns/dropdown values in HubSpot this will start failing, and we need to update `data/schema.json` accordingly.
 
 ## GitHub Actions
 
-The workflow runs weekly (Monday 9am UTC) or manually. It downloads, tests, then uploads.
-
-**Required secrets:**
-- `HUBSPOT_ACCESS_TOKEN`
-- `GOOGLE_SERVICE_ACCOUNT_JSON` (full JSON content)
-- `GOOGLE_SHEET_ID`
-
-**Optional variables:**
-- `GOOGLE_SHEET_TAB` (default: "HubSpot Deals")
-
-## Files
-
-- `src/hubspot_fetcher.py` - Fetches deals from HubSpot
-- `src/sheets_uploader.py` - Formats and uploads to Google Sheets
-- `scripts/download_data.py` - Downloads deals to `data/deals.csv`
-- `scripts/upload_data.py` - Uploads from `data/deals.csv`
-- `data/schema.json` - Expected columns and deal stages
+The workflow runs weekly. It downloads, tests, then uploads.
