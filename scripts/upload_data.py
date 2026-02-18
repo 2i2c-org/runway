@@ -26,13 +26,13 @@ HUBSPOT_TAB = "Data: HubSpot"
 MAU_TAB = "Data: MAUs"
 
 df = pd.read_csv(DATA_FILE)
-print(f"Uploading {len(df)} deals to sheet {SHEET_ID} tab '{HUBSPOT_TAB}'...")
-
 client = get_sheets_client()
+mau_df = fetch_mau_table()
+
+print(f"Uploading {len(df)} deals to sheet {SHEET_ID} tab '{HUBSPOT_TAB}'...")
 upload_to_sheet(client, SHEET_ID, HUBSPOT_TAB, df)
 
-mau_df = fetch_mau_table()
 print(f"Uploading KPI MAU table ({len(mau_df)} rows) to sheet {SHEET_ID}...")
 upload_dataframe(client, SHEET_ID, mau_df, tab_name=MAU_TAB)
 
-print(f"Done! Uploaded {len(df)} deals.")
+print(f"Done! Uploaded {len(df)} deals and {len(mau_df)} MAU rows.")

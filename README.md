@@ -23,6 +23,7 @@ Set these environment variables (or add to `.env` file):
 - `GOOGLE_SERVICE_ACCOUNT_FILE`: Path to Google service account JSON file
 
 All other information about where to put data (tab names etc) is hard-coded in the scripts.
+Hard-coded MAU filtering assumptions are centralized in `src/hardcoded_assumptions.py`.
 
 ## Usage
 
@@ -33,7 +34,7 @@ nox -s download
 # Run tests (validates schema)
 nox -s test
 
-# Upload to Google Sheets
+# Upload to Google Sheets (runs tests first)
 nox -s update
 
 # Do all three in sequence

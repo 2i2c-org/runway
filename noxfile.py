@@ -20,8 +20,9 @@ def test(session):
 
 @nox.session
 def update(session):
-    """Upload downloaded deals and KPI MAU table to Google Sheets."""
+    """Run tests, then upload downloaded deals and KPI MAU table."""
     session.install("-r", "requirements.txt")
+    session.run("pytest", "tests/", "-v")
     session.run("python", "scripts/upload_data.py")
 
 
@@ -29,5 +30,4 @@ def update(session):
 def download_and_update(session):
     """Download, test, and upload in sequence."""
     session.notify("download")
-    session.notify("test")
     session.notify("update")

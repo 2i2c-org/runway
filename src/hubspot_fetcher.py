@@ -75,19 +75,17 @@ def fetch_deals(token: str) -> Tuple[pd.DataFrame, dict]:
     filtered_out = original_count - len(df)
 
     # Resolve deal stage IDs to labels
-    stage_error = None
     try:
         stages = _get_dealstage_labels(client)
-        if "dealstage" in df.columns:
-            df["dealstage"] = df["dealstage"].map(stages).fillna(df["dealstage"])
-    except (PipelinesApiException, Exception) as err:
-        stage_error = str(err)
+    except PipelinesApiException as err:
+        raise RuntimeError(f"HubSpot pipelines API error: {err}") from err
+    if "dealstage" in df.columns:
+        df["dealstage"] = df["dealstage"].map(stages).fillna(df["dealstage"])
 
     df = add_use_date_columns(df)
 
     meta = {
         "total": len(df),
         "filtered_out": filtered_out,
-        "stage_error": stage_error,
     }
     return df, meta

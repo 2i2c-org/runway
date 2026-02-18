@@ -9,6 +9,12 @@ from typing import Optional
 
 import pandas as pd
 
+from src.hardcoded_assumptions import (
+    MAU_EXCLUDED_CLUSTER_HUB_PAIRS,
+    MAU_EXCLUDED_CLUSTER_SUBSTRINGS,
+    MAU_EXCLUDED_HUB_SUBSTRINGS,
+)
+
 
 KPI_CLOUD_URL = "https://2i2c.org/kpis/cloud/"
 HUB_ACTIVITY_CSV_FILENAME = "hub-activity.csv"
@@ -37,6 +43,22 @@ def _load_hub_activity_csv(csv_url: str) -> pd.DataFrame:
     return pd.read_csv(csv_url)
 
 
+def _apply_mau_exclusions(df: pd.DataFrame) -> pd.DataFrame:
+    for hub_substring in MAU_EXCLUDED_HUB_SUBSTRINGS:
+        df = df[
+            ~df["hub"].astype(str).str.contains(hub_substring, case=False, na=False)
+        ]
+    for cluster_substring in MAU_EXCLUDED_CLUSTER_SUBSTRINGS:
+        df = df[
+            ~df["cluster"]
+            .astype(str)
+            .str.contains(cluster_substring, case=False, na=False)
+        ]
+    for cluster, hub in MAU_EXCLUDED_CLUSTER_HUB_PAIRS:
+        df = df[~((df["cluster"] == cluster) & (df["hub"] == hub))]
+    return df
+
+
 def build_mau_table(df: pd.DataFrame) -> pd.DataFrame:
     """Build monthly users table aligned with KPI dashboard source logic."""
     required = {"cluster", "hub", "date", "users", "timescale"}
@@ -46,10 +68,8 @@ def build_mau_table(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
-    # Match KPI dashboard filtering logic
-    df = df[~df["hub"].astype(str).str.contains("staging", case=False, na=False)]
-    df = df[~df["cluster"].astype(str).str.contains("prometheus", case=False, na=False)]
-    df = df[~((df["cluster"] == "utoronto") & (df["hub"] == "highmem"))]
+    # Match KPI dashboard filtering logic and known exclusions.
+    df = _apply_mau_exclusions(df)
 
     # Use monthly users and collapse daily rows to one row per month
     df = df[df["timescale"] == "monthly"]
