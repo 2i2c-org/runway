@@ -11,8 +11,9 @@ We use this to make revenue projections based on this data.
 3. Uploads deals to a Google Sheet tab
 
 **Hub MAUs Data**:
-1. Downloads the KPI MAU CSV linked from [our KPIs page](https://2i2c.org/kpis/cloud/)
-2. Uploads the raw MAU table to a Google Sheet tab
+1. Downloads `hub-activity.csv` linked from [our KPIs page](https://2i2c.org/kpis/cloud/)
+2. Uses `timescale == "monthly"` rows
+3. Uploads that monthly users table to a Google Sheet tab
 
 ## Setup
 

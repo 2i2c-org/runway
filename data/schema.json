@@ -8,6 +8,10 @@
     "amount",
     "target_start_date",
     "target_end_date",
+    "contract_start_date",
+    "contract_end_date",
+    "use_start_date",
+    "use_end_date",
     "notes_last_updated"
   ],
   "dealstages": [

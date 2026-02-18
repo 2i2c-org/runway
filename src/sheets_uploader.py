@@ -6,26 +6,42 @@ from typing import List, Optional
 import gspread
 import pandas as pd
 
+from src.columns import add_use_date_columns
 
-# Maps HubSpot property names to display column headers
-COLUMN_MAP = {
-    "id": "Record ID",
-    "dealname": "Deal Name",
-    "dealstage": "Deal Stage",
-    "closedate": "Close Date",
-    "hs_deal_stage_probability": "Deal probability",
-    "amount": "Amount",
-    "target_start_date": "Target Start Date",
-    "target_end_date": "Target End Date",
-    "notes_last_updated": "Last Activity Date",
-}
+
+# HubSpot property names, in the order to upload to Sheets
+COLUMN_ORDER = [
+    "id",
+    "dealname",
+    "dealstage",
+    "closedate",
+    "hs_deal_stage_probability",
+    "amount",
+    "target_start_date",
+    "target_end_date",
+    "contract_start_date",
+    "contract_end_date",
+    "use_start_date",
+    "use_end_date",
+    "notes_last_updated",
+]
 
 DATE_COLUMNS = [
     "closedate",
     "target_start_date",
     "target_end_date",
+    "contract_start_date",
+    "contract_end_date",
+    "use_start_date",
+    "use_end_date",
     "notes_last_updated",
 ]
+
+
+def _to_iso_date_strings(series: pd.Series) -> pd.Series:
+    """Parse mixed ISO date/datetime values and return YYYY-MM-DD strings."""
+    parsed = pd.to_datetime(series, errors="coerce", format="ISO8601", utc=True)
+    return parsed.dt.strftime("%Y-%m-%d")
 
 
 def get_sheets_client():
@@ -44,30 +60,31 @@ def format_for_sheets(df: pd.DataFrame) -> List[List[str]]:
 
     - Formats all date columns to YYYY-MM-DD
     - Sorts by close date (most recent first)
-    - Renames columns to display names
+    - Preserves HubSpot property names as headers
     - Returns list of rows including header
     """
-    df = df.copy()
+    df = add_use_date_columns(df)
 
     # Ensure all expected columns exist
-    for col in COLUMN_MAP:
+    for col in COLUMN_ORDER:
         if col not in df.columns:
             df[col] = ""
 
     # Format date columns to YYYY-MM-DD
     for col in DATE_COLUMNS:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
+            df[col] = _to_iso_date_strings(df[col])
 
     # Sort by close date descending
     if "closedate" in df.columns:
-        df["_sort_date"] = pd.to_datetime(df["closedate"], errors="coerce")
+        df["_sort_date"] = pd.to_datetime(
+            df["closedate"], errors="coerce", format="ISO8601", utc=True
+        )
         df = df.sort_values("_sort_date", ascending=False, na_position="last")
         df = df.drop(columns=["_sort_date"])
 
-    # Select and rename columns
-    df = df[[col for col in COLUMN_MAP if col in df.columns]]
-    df = df.rename(columns=COLUMN_MAP)
+    # Select columns in expected order, preserving HubSpot property names as headers
+    df = df[[col for col in COLUMN_ORDER if col in df.columns]]
 
     # Convert to list of lists
     return [df.columns.tolist()] + df.fillna("").astype(str).values.tolist()

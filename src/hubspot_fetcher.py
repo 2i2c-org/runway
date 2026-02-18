@@ -8,6 +8,8 @@ from hubspot import HubSpot
 from hubspot.crm.deals import ApiException as DealsApiException
 from hubspot.crm.pipelines import ApiException as PipelinesApiException
 
+from src.columns import add_use_date_columns
+
 
 EXCLUDED_DEALSTAGES = {"closedlost"}
 DEAL_PROPERTIES = [
@@ -18,6 +20,8 @@ DEAL_PROPERTIES = [
     "amount",
     "target_start_date",
     "target_end_date",
+    "contract_start_date",
+    "contract_end_date",
     "notes_last_updated",
 ]
 
@@ -78,6 +82,8 @@ def fetch_deals(token: str) -> Tuple[pd.DataFrame, dict]:
             df["dealstage"] = df["dealstage"].map(stages).fillna(df["dealstage"])
     except (PipelinesApiException, Exception) as err:
         stage_error = str(err)
+
+    df = add_use_date_columns(df)
 
     meta = {
         "total": len(df),
