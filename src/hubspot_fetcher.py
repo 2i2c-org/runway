@@ -51,7 +51,11 @@ def fetch_deals(token: str) -> Tuple[pd.DataFrame, dict]:
     """Fetch all deals as a DataFrame, filtering out closed-lost deals.
 
     Returns:
-        Tuple of (DataFrame with deals, metadata dict with counts and any errors)
+        Tuple of:
+        - DataFrame containing deal rows used by downstream upload
+        - Metadata dict with summary counts:
+          - total: number of returned rows after filters
+          - filtered_out: number of excluded closed-lost rows
     """
     client = HubSpot(access_token=token)
 

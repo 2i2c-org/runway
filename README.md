@@ -1,52 +1,48 @@
 # HubSpot + KPI MAU to Google Sheets Sync
 
-Syncs HubSpot deals data and KPI MAU summaries to our [budget projections google worksheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8/edit?gid=1551246221#gid=1551246221).
-We use this to make revenue projections based on this data.
-
-## What it does
-
-**HubSpot Deals Data**:
-1. Downloads all deals from HubSpot (excludes "closedlost")
-2. Validates data matches expected schema
-3. Uploads deals to a Google Sheet tab
-
-**Hub MAUs Data**:
-1. Downloads `hub-activity.csv` linked from [our KPIs page](https://2i2c.org/kpis/cloud/)
-2. Uses `timescale == "monthly"` rows
-3. Uploads that monthly users table to a Google Sheet tab
+Syncs HubSpot deals and KPI MAU data to our [budget sheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8/edit?gid=1551246221#gid=1551246221)
 
 ## Setup
 
-Set these environment variables (or add to `.env` file):
+Set these environment variables (or use `.env`):
 
-- `HUBSPOT_ACCESS_TOKEN`: HubSpot private app access token
-- `GOOGLE_SERVICE_ACCOUNT_FILE`: Path to Google service account JSON file
+- `HUBSPOT_ACCESS_TOKEN`
+- `GOOGLE_SERVICE_ACCOUNT_FILE`
 
-All other information about where to put data (tab names etc) is hard-coded in the scripts.
-Hard-coded MAU filtering assumptions are centralized in `src/hardcoded_assumptions.py`.
-
-## Usage
+## Commands
 
 ```bash
-# Download data from HubSpot
+# Fetch HubSpot deals into data/deals.csv
 nox -s download
 
-# Run tests (validates schema)
+# Run tests
 nox -s test
 
-# Upload to Google Sheets (runs tests first)
+# Run tests, then upload HubSpot + MAU tables
 nox -s update
 
-# Do all three in sequence
+# Download, then update
 nox -s download-and-update
 ```
 
-## Testing
+## Architecture (short)
 
-There is lightweight testing to ensure that the underlying data structure hasn't changed in HubSpot etc.
+- `scripts/download_data.py`: fetch HubSpot deals, write `data/deals.csv`.
+- `scripts/upload_data.py`: load deals, fetch MAU table, upload both tabs.
+- `src/hubspot_fetcher.py`: HubSpot API fetch + deal transforms.
+- `src/kpi_mau_fetcher.py`: KPI HTML/CSV fetch + MAU transform.
+- `src/sheets_uploader.py`: sheet upload + HubSpot row formatting.
+- `src/hardcoded_assumptions.py`: explicit MAU exclusions/business assumptions.
 
-If we change the columns/dropdown values in HubSpot this will start failing, and we need to update `data/schema.json` accordingly.
+## Maintainer notes
 
-## GitHub Actions
+- If HubSpot columns or stages change intentionally, update `data/schema.json` and tests.
+- If MAU exclusions change, edit `src/hardcoded_assumptions.py` and `tests/test_kpi_mau_fetcher.py` together.
+- If sheet destination/tab names change, edit constants in `scripts/upload_data.py`.
 
-The workflow runs weekly. It downloads, tests, then uploads.
+## CI
+
+GitHub Actions runs weekly (Monday 09:00 UTC):
+
+1. `nox -s download`
+2. `nox -s update`
