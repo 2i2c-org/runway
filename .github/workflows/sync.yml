@@ -3,7 +3,7 @@ name: Sync HubSpot to Google Sheets
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 9 * * 1'  # Weekly on Monday at 9am UTC
+    - cron: '0 9 * * *'  # Daily at 9am UTC
 
 jobs:
   sync:
@@ -23,15 +23,11 @@ jobs:
       - name: Write Google service account file
         run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service-account-key.json
 
-      - name: Download data from HubSpot
+      - name: Run pipeline
         env:
           HUBSPOT_ACCESS_TOKEN: ${{ secrets.HUBSPOT_ACCESS_TOKEN }}
-        run: nox -s download
-
-      - name: Upload to Google Sheets (includes tests)
-        env:
           GOOGLE_SERVICE_ACCOUNT_FILE: service-account-key.json
-        run: nox -s update
+        run: nox -s sync
 
       - name: Clean up credentials
         if: always()

@@ -1,48 +1,39 @@
-# HubSpot + KPI MAU to Google Sheets Sync
+# Budget Updates Pipeline
 
-Syncs HubSpot deals and KPI MAU data to our [budget sheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8/edit?gid=1551246221#gid=1551246221)
+Pulls deal data from HubSpot and MAU data from our hubs, runs revenue projections, and uploads everything to the [budget spreadsheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8). 
+## Usage
 
-## Setup
+You'll need two things for authentication, both should be environment variables or in a `.env` file:
 
-Set these environment variables (or use `.env`):
+- `HUBSPOT_ACCESS_TOKEN` - get this from a BD team member, it needs read access from HubSpot
+- `GOOGLE_SERVICE_ACCOUNT_FILE` allows us to push to google sheets. See [this guide](https://docs.gspread.org/en/latest/oauth2.html) for some context. Use [this service account](https://console.cloud.google.com/iam-admin/serviceaccounts/details/113674037014124702779;edit=true?previousPage=%2Fapis%2Fcredentials%3Fproject%3Dtwo-eye-two-see&project=two-eye-two-see).
 
-- `HUBSPOT_ACCESS_TOKEN`
-- `GOOGLE_SERVICE_ACCOUNT_FILE`
-
-## Commands
+Then, to download the latest data and push to our Google Sheet:
 
 ```bash
-# Fetch HubSpot deals into data/deals.csv
-nox -s download
-
-# Run tests
-nox -s test
-
-# Run tests, then upload HubSpot + MAU tables
-nox -s update
-
-# Download, then update
-nox -s download-and-update
+nox -s sync
 ```
 
-## Architecture (short)
+## What it does
 
-- `scripts/download_data.py`: fetch HubSpot deals, write `data/deals.csv`.
-- `scripts/upload_data.py`: load deals, fetch MAU table, upload both tabs.
-- `src/hubspot_fetcher.py`: HubSpot API fetch + deal transforms.
-- `src/kpi_mau_fetcher.py`: KPI HTML/CSV fetch + MAU transform.
-- `src/sheets_uploader.py`: sheet upload + HubSpot row formatting.
-- `src/hardcoded_assumptions.py`: explicit MAU exclusions/business assumptions.
+The pipeline has a few phases (controlled by `scripts/sync.py`):
 
-## Maintainer notes
+1. **Download** - fetch HubSpot deals and MAU data.
+2. **Clean** - add a few extra columns we use to subset data etc.
+3. **Split** - we split deals into three groups for inspection in the google sheet:
+    - **Active** - Closed Won contracts that haven't expired + pipeline deals with complete data. These feed the revenue model.
+    - **Removed** - pipeline deals missing dates or amount. These need fixing in HubSpot.
+    - **Inactive** - everything else (expired contracts, etc).
+4. **Validate** - we run validations throughout this process and print their status to the terminal.
+5. **Model** - we run a little model of *expected* revenue based on deal amounts and their probability of success. We take the 10th, 50th, and 90th percentile of these results (these are called "pessimistic", "estimated", and "optimistic").
+6. **Upload** - we upload the model results and several intermediate data representations for inspection.
 
-- If HubSpot columns or stages change intentionally, update `data/schema.json` and tests.
-- If MAU exclusions change, edit `src/hardcoded_assumptions.py` and `tests/test_kpi_mau_fetcher.py` together.
-- If sheet destination/tab names change, edit constants in `scripts/upload_data.py`.
+The model results are then used by [our budget model](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8/edit?pli=1&gid=1812316711#gid=1812316711) to create runway projections.
 
-## CI
+## Tunable assumptions
 
-GitHub Actions runs weekly (Monday 09:00 UTC):
+There are a few hard-coded assumptions in `src/assumptions.py` just to keep things explicit, though honestly there are probably other assumptions we're not quite reasoning with explicitly. The budget sheet should list some of these as well.
 
-1. `nox -s download`
-2. `nox -s update`
+## Changing things
+
+There are some assumptions about **where to put data in the google sheet**, so if you need to move things around in the sheet (e.g. renaming tabs, moving important cells), then you'll probably need to update scripts here accordingly.
