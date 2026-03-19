@@ -4,8 +4,6 @@ MAU_EXCLUDED_CLUSTER_SUBSTRINGS = ("prometheus", "hhmi")
 
 PIPELINE_STAGES = ("Discovery", "Enrichment", "Outreach", "Proposal", "Renewal")
 
-AVG_DAYS_PER_MONTH = 30.44
-
 PROJECTION_ORIGIN = "2025-06-01"
 
 SIMULATION_RUNS = 1000

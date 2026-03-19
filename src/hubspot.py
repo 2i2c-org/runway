@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.assumptions import AVG_DAYS_PER_MONTH, PIPELINE_STAGES
+from src.assumptions import PIPELINE_STAGES
 
 # Preferred column order for deal tabs (most useful first)
 PREFERRED_COLUMNS = [
@@ -34,8 +34,10 @@ def load_deals():
 
 
 def _months_between(start, end):
-    days = (end - start).dt.days.fillna(0)
-    return np.maximum((days / AVG_DAYS_PER_MONTH).round(), 1)
+    """Count calendar months a deal spans (inclusive of both start and end months)."""
+    return np.maximum(
+        (end.dt.year - start.dt.year) * 12 + (end.dt.month - start.dt.month) + 1, 1
+    )
 
 
 def _reorder_columns(df, front):

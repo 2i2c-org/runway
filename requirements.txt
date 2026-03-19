@@ -1,5 +1,3 @@
-# HubSpot integration
-hubspot-api-client
 python-dotenv
 
 # Google Sheets integration

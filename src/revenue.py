@@ -61,10 +61,7 @@ def build_deal_detail(active_df, projection_start):
             active = d_start <= month_end and d_end >= month
             active_months.append((ml, active))
 
-        # Divide remaining amount evenly across active months.
-        n_active = sum(1 for _, a in active_months if a)
-        remaining = _remaining(deal)
-        monthly_rev = round(remaining / n_active, 2) if n_active > 0 else 0
+        monthly_rev = deal["monthly_revenue"]
         expected = round(monthly_rev * deal_prob, 0)
 
         row = {
@@ -77,8 +74,8 @@ def build_deal_detail(active_df, projection_start):
             # This is just for visualizing in the google sheet, not used in logic below
             # Note that:
             #   for committed deals, deal_prob is 1 but remaining might be < deal total,
-            #   for pipeline deals, deal_prob will be < 1 but remaining will always be the deal total. 
-            "amount_future_revenue": round(remaining * deal_prob, 0),
+            #   for pipeline deals, deal_prob will be < 1 but remaining will always be the deal total.
+            "amount_future_revenue": round(_remaining(deal) * deal_prob, 0),
         }
         for ml, active in active_months:
             row[ml] = expected if active else ""
@@ -122,7 +119,6 @@ def build_projections(active_df, projection_start, mau_revenue=None):
 
     d_start = pd.to_datetime(active_df["use_start_date"])
     d_end = end_dates
-    d_rev = active_df["monthly_revenue"].fillna(0).values
     d_prob = (
         pd.to_numeric(active_df["hs_deal_stage_probability"], errors="coerce")
         .fillna(0)
@@ -139,6 +135,8 @@ def build_projections(active_df, projection_start, mau_revenue=None):
         month_end = month + pd.DateOffset(months=1) - pd.DateOffset(days=1)
         # Mark a deal as active for that month if the month falls w/in period of performance
         active_mask[:, i] = ((d_start <= month_end) & (d_end >= month)).values
+
+    d_rev = active_df["monthly_revenue"].fillna(0).values
 
     # "Committed" deals have probability = 1 and always contribute
     committed_mask = d_prob >= 1.0
