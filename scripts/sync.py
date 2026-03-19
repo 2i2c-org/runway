@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs our budget update pipeline. This includes these steps roughly broken down below:
 
-- Download from HubSpot and the MAU table
+- Download pre-built CSVs from the data-private repo
 - Clean it up and categorize data into revenue buckets
 - Model different scenarios based on p(success)
 - Upload it to the Google Sheet and run projections
@@ -11,6 +11,8 @@ so that we can sanity-check them. As a general rule, we should look at those and
 if anything feels "off" so that we can trust these numbers.
 """
 
+import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -44,26 +46,43 @@ MAU_TAB          = "Hubs: MAUs"
 
 
 def download():
-    """Fetch deals from HubSpot and MAU data from the KPI page."""
-    from src.hubspot import fetch_deals
-    from src.mau import build_mau_table
-
+    """Download pre-built CSVs from the 2i2c-org/data-private repo."""
     DATA_DIR.mkdir(exist_ok=True)
 
-    # Hubspot deals data
-    print("  Fetching deals...", flush=True)
-    df, meta = fetch_deals()
-    df.to_csv(DATA_DIR / "deals_raw.csv", index=False)
-    print(
-        f"  ✅ {len(df)} deals → deals_raw.csv ({meta['filtered_out']} Closed Lost filtered out)"
-    )
+    releases = [
+        ("hubspot-latest", "deals_raw.csv"),
+        ("maus-latest", "mau_raw.csv"),
+    ]
+    # gh CLI uses GH_TOKEN env var for auth. In CI this is set directly;
+    # locally it may be stored as GH_DATA_PRIVATE_TOKEN in .env.
+    env = os.environ.copy()
+    token = os.environ.get("GH_DATA_PRIVATE_TOKEN")
+    if token:
+        env["GH_TOKEN"] = token
 
-    # MAU data
-    mau_df = build_mau_table()
-    mau_df.to_csv(DATA_DIR / "mau_raw.csv", index=False)
-    print(
-        f"  ✅ {len(mau_df)} MAU rows → mau_raw.csv ({mau_df['cluster'].nunique()} clusters)"
-    )
+    for tag, expected_file in releases:
+        print(f"  Downloading {tag}...", flush=True)
+        subprocess.run(
+            [
+                "gh",
+                "release",
+                "download",
+                tag,
+                "--repo",
+                "2i2c-org/data-private",
+                "--dir",
+                str(DATA_DIR),
+                "--clobber",
+            ],
+            check=True,
+            env=env,
+        )
+        path = DATA_DIR / expected_file
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Expected {path} after downloading {tag}, but it wasn't found."
+            )
+        print(f"  ✅ {expected_file} downloaded.")
 
 
 def clean():
@@ -116,9 +135,7 @@ def clean():
     mau_df = pd.read_csv(mau_path)
     mau_df, mau_revenue = calculate_mau_revenue(mau_df)
     upload_dataframe(client, SHEET_ID, mau_df, tab_name=MAU_TAB)
-    print(
-        f"  ✅ {MAU_TAB}: {len(mau_df)} rows, mean ${mau_revenue:,.0f}/month"
-    )
+    print(f"  ✅ {MAU_TAB}: {len(mau_df)} rows, mean ${mau_revenue:,.0f}/month")
 
     # Integrity checks
     from src.checks import (

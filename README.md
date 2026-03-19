@@ -1,11 +1,11 @@
 # Budget Updates Pipeline
 
-Pulls deal data from HubSpot and MAU data from our hubs, runs revenue projections, and uploads everything to the [budget spreadsheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8). 
+Pulls deal data and MAU data from pre-built CSVs in [`2i2c-org/data-private`](https://github.com/2i2c-org/data-private), runs revenue projections, and uploads everything to the [budget spreadsheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8).
 ## Usage
 
 You'll need two things for authentication, both should be environment variables or in a `.env` file:
 
-- `HUBSPOT_ACCESS_TOKEN` - get this from a BD team member, it needs read access from HubSpot
+- `GH_DATA_PRIVATE_TOKEN` - a GitHub token with read access to `2i2c-org/data-private`. Alternatively, authenticate via `gh auth login`.
 - `GOOGLE_SERVICE_ACCOUNT_FILE` allows us to push to google sheets. See [this guide](https://docs.gspread.org/en/latest/oauth2.html) for some context. Use [this service account](https://console.cloud.google.com/iam-admin/serviceaccounts/details/113674037014124702779;edit=true?previousPage=%2Fapis%2Fcredentials%3Fproject%3Dtwo-eye-two-see&project=two-eye-two-see).
 
 Then, to download the latest data and push to our Google Sheet:
@@ -18,7 +18,7 @@ nox -s sync
 
 The pipeline has a few phases (controlled by `scripts/sync.py`):
 
-1. **Download** - fetch HubSpot deals and MAU data.
+1. **Download** - download pre-built CSVs from `2i2c-org/data-private` via `gh release download`.
 2. **Clean** - add a few extra columns we use to subset data etc.
 3. **Split** - we split deals into three groups for inspection in the google sheet:
     - **Active** - Closed Won contracts that haven't expired + pipeline deals with complete data. These feed the revenue model.

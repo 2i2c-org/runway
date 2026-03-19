@@ -1,17 +1,24 @@
-"""MAU data: fetch, clean, and calculate revenue from monthly active users."""
+"""MAU data: load from CSV, clean, and calculate revenue from monthly active users."""
+
+from pathlib import Path
 
 import pandas as pd
 
 from src.assumptions import MAU_EXCLUDED_CLUSTER_SUBSTRINGS
 
-# Re-built daily via CRON — unique user counts per cluster
-MAUS_CSV_URL = "https://github.com/2i2c-org/data-maus/releases/download/latest/maus-unique-by-cluster.csv"
+DATA_DIR = Path(__file__).parent.parent / "data"
 
 
 def build_mau_table(df=None):
-    """Fetch and build monthly unique users table by cluster/month."""
+    """Load and build monthly unique users table by cluster/month."""
     if df is None:
-        df = pd.read_csv(MAUS_CSV_URL)
+        path = DATA_DIR / "mau_raw.csv"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{path} not found. Run the download step first "
+                "(gh release download maus-latest --repo 2i2c-org/data-private --dir data/)."
+            )
+        df = pd.read_csv(path)
     required = {"cluster", "date", "unique_users"}
     missing = required - set(df.columns)
     if missing:

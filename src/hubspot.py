@@ -1,31 +1,11 @@
-"""HubSpot deals: fetch, add derived columns, and categorize."""
+"""HubSpot deals: load from CSV, add derived columns, and categorize."""
 
-import os
-from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from hubspot import HubSpot
-from hubspot.crm.deals import ApiException as DealsApiException
-from hubspot.crm.pipelines import ApiException as PipelinesApiException
 
 from src.assumptions import AVG_DAYS_PER_MONTH, PIPELINE_STAGES
-
-# HubSpot returns raw stage IDs (not labels) - "closedlost" is the internal ID
-EXCLUDED_DEALSTAGES = {"closedlost"}
-DEAL_PROPERTIES = [
-    "dealname",
-    "dealstage",
-    "closedate",
-    "hs_deal_stage_probability",
-    "amount",
-    "amount_collected",
-    "target_start_date",
-    "target_end_date",
-    "contract_start_date",
-    "contract_end_date",
-    "notes_last_updated",
-]
 
 # Preferred column order for deal tabs (most useful first)
 PREFERRED_COLUMNS = [
@@ -39,9 +19,18 @@ PREFERRED_COLUMNS = [
     "dealstage",
 ]
 
+DATA_DIR = Path(__file__).parent.parent / "data"
 
-def _month_start(dt):
-    return pd.Timestamp(dt.year, dt.month, 1)
+
+def load_deals():
+    """Load deals from the pre-built CSV (downloaded from data-private repo)."""
+    path = DATA_DIR / "deals_raw.csv"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found. Run the download step first "
+            "(gh release download hubspot-latest --repo 2i2c-org/data-private --dir data/)."
+        )
+    return pd.read_csv(path)
 
 
 def _months_between(start, end):
@@ -53,45 +42,6 @@ def _reorder_columns(df, front):
     front = [c for c in front if c in df.columns]
     rest = [c for c in df.columns if c not in set(front)]
     return df[front + rest]
-
-
-def _get_dealstage_labels(client):
-    pipelines = client.crm.pipelines.pipelines_api.get_all("deals")
-    labels = {}
-    for pipeline in pipelines.results:
-        for stage in pipeline.stages:
-            labels[str(stage.id)] = stage.label
-    return labels
-
-
-def fetch_deals():
-    """Fetch all deals, filter out Closed Lost, resolve stage labels."""
-    token = os.environ.get("HUBSPOT_ACCESS_TOKEN") or os.environ.get("HUBSPOT_TOKEN")
-    if not token:
-        raise RuntimeError("Missing HUBSPOT_ACCESS_TOKEN. Add it to your .env file.")
-    client = HubSpot(access_token=token)
-
-    try:
-        deals = client.crm.deals.get_all(properties=DEAL_PROPERTIES)
-    except DealsApiException as err:
-        raise RuntimeError(f"HubSpot API error: {err}") from err
-
-    # HubSpot SDK returns nested dicts like {"properties.dealname": "..."}
-    # we flatten them to make them easier to work with
-    df = pd.json_normalize([deal.to_dict() for deal in deals])
-    df.columns = df.columns.str.replace("properties.", "", regex=False)
-
-    keep_cols = ["id"] + DEAL_PROPERTIES
-    df = df[[c for c in keep_cols if c in df.columns]]
-
-    original_count = len(df)
-    df = df[~df["dealstage"].isin(EXCLUDED_DEALSTAGES)]
-    filtered_out = original_count - len(df)
-
-    stages = _get_dealstage_labels(client)
-    df["dealstage"] = df["dealstage"].map(stages).fillna(df["dealstage"])
-
-    return df, {"total": len(df), "filtered_out": filtered_out}
 
 
 def add_columns(df, projection_start):

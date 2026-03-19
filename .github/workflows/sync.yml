@@ -25,7 +25,7 @@ jobs:
 
       - name: Run pipeline
         env:
-          HUBSPOT_ACCESS_TOKEN: ${{ secrets.HUBSPOT_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_DATA_PRIVATE_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_FILE: service-account-key.json
         run: nox -s sync
 
