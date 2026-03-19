@@ -33,7 +33,7 @@ def _remaining(deal):
 def build_deal_detail(active_df, projection_start):
     """Spread monthly expected revenue across future months based on start date and expected monthly amount."""
 
-    end_dates = pd.to_datetime(active_df["use_end_date"], errors="coerce")
+    end_dates = pd.to_datetime(active_df["use_end_date"])
     months = _month_range(projection_start, _month_start(end_dates.max()))
     # We're basically adding an extra column for each month of our projections.
     # We'll end up concatenating all this into one big dataframe that will fill in
@@ -41,7 +41,7 @@ def build_deal_detail(active_df, projection_start):
     month_labels = [m.strftime("%Y-%m") for m in months]
     deal_rows = []
 
-    start = pd.to_datetime(active_df["use_start_date"], errors="coerce")
+    start = pd.to_datetime(active_df["use_start_date"])
     prob = pd.to_numeric(
         active_df.get("hs_deal_stage_probability", 0), errors="coerce"
     ).fillna(0)
@@ -49,8 +49,22 @@ def build_deal_detail(active_df, projection_start):
     # Looping through deals to project out monthly revenue for each
     for idx in active_df.index:
         deal = active_df.loc[idx]
-        monthly_rev = deal.get("monthly_revenue", 0) or 0
         deal_prob = prob.loc[idx]
+        d_start, d_end = start.loc[idx], end_dates.loc[idx]
+
+        # Figure out which calendar months this deal is active in.
+        # This lets us know how many months to use for our monthly projections,
+        # and ensures that we don't accidentally over or under-count.
+        active_months = []
+        for month, ml in zip(months, month_labels):
+            month_end = month + pd.DateOffset(months=1) - pd.DateOffset(days=1)
+            active = d_start <= month_end and d_end >= month
+            active_months.append((ml, active))
+
+        # Divide remaining amount evenly across active months.
+        n_active = sum(1 for _, a in active_months if a)
+        remaining = _remaining(deal)
+        monthly_rev = round(remaining / n_active, 2) if n_active > 0 else 0
         expected = round(monthly_rev * deal_prob, 0)
 
         row = {
@@ -60,17 +74,13 @@ def build_deal_detail(active_df, projection_start):
             "monthly_revenue": monthly_rev,
             "expected_monthly_revenue": expected,
             "amount": deal.get("amount", ""),
-            "amount_remaining": round(_remaining(deal) * deal_prob, 0),
+            # This is just for visualizing in the google sheet, not used in logic below
+            # Note that:
+            #   for committed deals, deal_prob is 1 but remaining might be < deal total,
+            #   for pipeline deals, deal_prob will be < 1 but remaining will always be the deal total. 
+            "amount_future_revenue": round(remaining * deal_prob, 0),
         }
-        d_start, d_end = start.loc[idx], end_dates.loc[idx]
-        for month, ml in zip(months, month_labels):
-            month_end = month + pd.DateOffset(months=1) - pd.DateOffset(days=1)
-            active = (
-                pd.notna(d_start)
-                and pd.notna(d_end)
-                and d_start <= month_end
-                and d_end >= month
-            )
+        for ml, active in active_months:
             row[ml] = expected if active else ""
         deal_rows.append(row)
 
@@ -88,27 +98,29 @@ def build_deal_detail(active_df, projection_start):
 
 def build_projections(active_df, projection_start, mau_revenue=None):
     """Monte Carlo revenue projections. It basically does the following 1000 times:
-    
+
     - For each deal
         - Flip a coin, weighted by the probability of success of that deal
         - If yes, then it is "won" so we include full revenue in revenue projections
         - We then project the monthly revenue over each month of the period of performance.
         - If no, then it is "lost" and we drop it.
     - We then sum across all deals for each month to get the projected monthly revenue for that simulation.
-    
+
     After 1000 simulations, we collect the 10th/50th/90th percentiles of the results.
 
     Note that any "closed won" deals always contribute because their probability is 1.
     """
     start_month = pd.Timestamp(PROJECTION_ORIGIN)
-    end_dates = pd.to_datetime(active_df["use_end_date"], errors="coerce")
-    end_month = _month_start(end_dates.max()) # End at the latest contract month across all deals
+    end_dates = pd.to_datetime(active_df["use_end_date"])
+    end_month = _month_start(
+        end_dates.max()
+    )  # End at the latest contract month across all deals
 
     months = _month_range(start_month, end_month)
     month_labels = [m.strftime("%Y-%m") for m in months]
     n_months = len(months)
 
-    d_start = pd.to_datetime(active_df["use_start_date"], errors="coerce")
+    d_start = pd.to_datetime(active_df["use_start_date"])
     d_end = end_dates
     d_rev = active_df["monthly_revenue"].fillna(0).values
     d_prob = (
@@ -126,9 +138,7 @@ def build_projections(active_df, projection_start, mau_revenue=None):
             continue
         month_end = month + pd.DateOffset(months=1) - pd.DateOffset(days=1)
         # Mark a deal as active for that month if the month falls w/in period of performance
-        active_mask[:, i] = (
-            (d_start <= month_end) & (d_end >= month)
-        ).values
+        active_mask[:, i] = ((d_start <= month_end) & (d_end >= month)).values
 
     # "Committed" deals have probability = 1 and always contribute
     committed_mask = d_prob >= 1.0
@@ -160,7 +170,7 @@ def build_projections(active_df, projection_start, mau_revenue=None):
             np.percentile(sim, SCENARIO_PERCENTILES["Optimistic"], axis=0)
         ).tolist(),
     }
-    
+
     # Now add a row for MAU revenue, which is not a simulation just taking the
     # mean of the last 12 months of historical data. This is a bit hacky but we
     # wanna keep it simple for now.
