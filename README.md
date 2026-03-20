@@ -18,13 +18,13 @@ nox -s sync
 
 The pipeline has a few phases (controlled by `scripts/sync.py`):
 
-1. **Download** - download pre-built CSVs from `2i2c-org/data-private` via `gh release download`.
+1. **Download** - download pre-built CSVs from `2i2c-org/data-private` via `gh release download`. This should already be relatively clean (done in `data-private`).
 2. **Clean** - add a few extra columns we use to subset data etc.
 3. **Split** - we split deals into three groups for inspection in the google sheet:
     - **Active** - Closed Won contracts that haven't expired + pipeline deals with complete data. These feed the revenue model.
     - **Removed** - pipeline deals missing dates or amount. These need fixing in HubSpot.
     - **Inactive** - everything else (expired contracts, etc).
-4. **Validate** - we run validations throughout this process and print their status to the terminal.
+4. **Validate** - we run validations throughout this process and print their status to the terminal. These are in `tests/test_core.py` and they're printed with little ✅ in the logs when you run `nox -s sync`. You can also run those tests w/ `nox -s test` and it'll include some unit tests for specific functions (like the MAU revenue calculator).
 5. **Model** - we run a little model of *expected* revenue based on deal amounts and their probability of success. We take the 10th, 50th, and 90th percentile of these results (these are called "pessimistic", "estimated", and "optimistic").
 6. **Upload** - we upload the model results and several intermediate data representations for inspection.
 
