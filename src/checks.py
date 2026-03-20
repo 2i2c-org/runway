@@ -67,16 +67,20 @@ def test_deal_detail_sums_match_amounts(deal_detail_df, active_df):
     failures = []
     for _, row in deals.iterrows():
         amount = pd.to_numeric(row.get("amount", 0), errors="coerce") or 0
-        if amount < 10000:
+        # Compare against remaining amount (amount - collected)
+        collected = pd.to_numeric(row.get("amount_collected", 0), errors="coerce") or 0
+        expected = max(amount - collected, 0)
+        # Remove deals with very little remaining because we start to hit weird month boundary errors when its v short
+        if expected < 10000:
             continue
         monthly_sum = (
             pd.to_numeric(pd.Series([row[c] for c in month_cols]), errors="coerce")
             .fillna(0)
             .sum()
         )
-        if monthly_sum > amount * 1.15:
+        if monthly_sum > expected * 1.15 or monthly_sum < expected * 0.85:
             failures.append(
-                f"  {row['dealname']}: projections sum ${monthly_sum:,.0f} > amount ${amount:,.0f}"
+                f"  {row['dealname']}: projections sum ${monthly_sum:,.0f} vs expected ${expected:,.0f}"
             )
     assert not failures, "Deal detail sums exceed deal amounts:\n" + "\n".join(failures)
 

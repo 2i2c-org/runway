@@ -103,7 +103,8 @@ def categorize_deals(df, projection_start):
         & (end >= pd.Timestamp(projection_start))
         & complete
     )
-    active = df[is_committed | (is_pipeline & complete)].sort_values(
+    not_expired = end >= pd.Timestamp(projection_start)
+    active = df[is_committed | (is_pipeline & complete & not_expired)].sort_values(
         "monthly_revenue", ascending=False, na_position="last"
     )
 

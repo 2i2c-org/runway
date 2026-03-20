@@ -87,7 +87,7 @@ def download():
 
 def clean():
     """Add derived columns, categorize deals, calculate MAU revenue."""
-    from src.mau import calculate_revenue as calculate_mau_revenue
+    from src.mau import build_mau_table, calculate_revenue as calculate_mau_revenue
     from src.hubspot import add_columns, categorize_deals
     from src.sheets_uploader import get_sheets_client, upload_dataframe
 
@@ -132,7 +132,7 @@ def clean():
 
     # MAU revenue - this is just based on historical data, no projected growth etc
     mau_path = DATA_DIR / "mau_raw.csv"
-    mau_df = pd.read_csv(mau_path)
+    mau_df = build_mau_table(pd.read_csv(mau_path))
     mau_df, mau_revenue = calculate_mau_revenue(mau_df)
     upload_dataframe(client, SHEET_ID, mau_df, tab_name=MAU_TAB)
     print(f"  ✅ {MAU_TAB}: {len(mau_df)} rows, mean ${mau_revenue:,.0f}/month")
