@@ -57,40 +57,43 @@ def test_scenario_ordering(projections_df):
 
 
 @check
-def test_deal_detail_sums_match_amounts(deal_detail_df, active_df):
-    """Deal detail sums are consistent with deal amounts (>$10k deals only)."""
-    # Short/small contracts can span more calendar months than their actual duration
-    # due to month-boundary rounding, so we only check deals large enough that
-    # this rounding error is proportionally small.
-    deals = deal_detail_df[deal_detail_df["dealname"] != "TOTAL"]
+def test_monthly_revenue_sums(monthly_revenue_df):
+    """Monthly revenue sums match expected_monthly_revenue * active months."""
+    deals = monthly_revenue_df[monthly_revenue_df["dealname"] != "TOTAL"]
     month_cols = [c for c in deals.columns if c[:4].isdigit()]
     failures = []
     for _, row in deals.iterrows():
-        amount = pd.to_numeric(row.get("amount", 0), errors="coerce") or 0
-        # Compare against remaining amount (amount - collected)
-        collected = pd.to_numeric(row.get("amount_collected", 0), errors="coerce") or 0
-        expected = max(amount - collected, 0)
-        # Remove deals with very little remaining because we start to hit weird month boundary errors when its v short
+        monthly_rate = (
+            pd.to_numeric(row.get("expected_monthly_revenue", 0), errors="coerce") or 0
+        )
+        if monthly_rate < 500:
+            continue
+        monthly_vals = pd.to_numeric(
+            pd.Series([row[c] for c in month_cols]), errors="coerce"
+        ).fillna(0)
+        active_months = (monthly_vals > 0).sum()
+        monthly_sum = monthly_vals.sum()
+        expected = monthly_rate * active_months
+        # Skip small totals where rounding dominates
         if expected < 10000:
             continue
-        monthly_sum = (
-            pd.to_numeric(pd.Series([row[c] for c in month_cols]), errors="coerce")
-            .fillna(0)
-            .sum()
-        )
-        if monthly_sum > expected * 1.15 or monthly_sum < expected * 0.85:
+        if abs(monthly_sum - expected) > expected * 0.05:
             failures.append(
-                f"  {row['dealname']}: projections sum ${monthly_sum:,.0f} vs expected ${expected:,.0f}"
+                f"  {row['dealname']}: sum ${monthly_sum:,.0f} "
+                f"vs {active_months} months * ${monthly_rate:,.0f} "
+                f"= ${expected:,.0f}"
             )
-    assert not failures, "Deal detail sums exceed deal amounts:\n" + "\n".join(failures)
+    assert not failures, (
+        "Monthly revenue sums don't match monthly rates:\n" + "\n".join(failures)
+    )
 
 
 @check
-def test_monte_carlo_matches_weighted(projections_df, deal_detail_df):
+def test_monte_carlo_matches_weighted(projections_df, monthly_revenue_df):
     """Monte Carlo 'estimated' scenario ≈ probability-weighted sums (within 20%)."""
-    total_row = deal_detail_df[deal_detail_df["dealname"] == "TOTAL"]
+    total_row = monthly_revenue_df[monthly_revenue_df["dealname"] == "TOTAL"]
     # Only compare months that exist in both (they start from different dates)
-    detail_cols = set(deal_detail_df.columns)
+    detail_cols = set(monthly_revenue_df.columns)
     month_cols = [
         c for c in projections_df.columns if c[:4].isdigit() and c in detail_cols
     ]

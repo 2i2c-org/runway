@@ -79,7 +79,7 @@ def test_monthly_revenue_with_collected():
     assert result["use_start_date"].iloc[0] == "2025-07-01"
 
 
-# --- Deal detail projection tests ---
+# --- Monthly revenue projection tests ---
 
 
 def _make_active_df(start, end, amount, collected=None, prob="1"):
@@ -108,27 +108,27 @@ def _deal_month_sum(detail):
     return pd.to_numeric(deal_row[month_cols], errors="coerce").fillna(0).sum()
 
 
-def test_deal_detail_sums_to_amount_month_aligned():
+def test_monthly_revenue_sums_to_amount_month_aligned():
     """Month-aligned deal: monthly columns should sum to the full amount."""
-    from src.revenue import build_deal_detail
+    from src.revenue import build_monthly_revenue
 
     active = _make_active_df("2025-01-01", "2025-12-31", "12000")
-    detail = build_deal_detail(active, pd.Timestamp("2025-01-01"))
+    detail = build_monthly_revenue(active, pd.Timestamp("2025-01-01"))
     assert _deal_month_sum(detail) == 12000
 
 
-def test_deal_detail_sums_to_amount_mid_month():
+def test_monthly_revenue_sums_to_amount_mid_month():
     """Mid-month start/end: monthly columns should still sum to amount."""
-    from src.revenue import build_deal_detail
+    from src.revenue import build_monthly_revenue
 
     active = _make_active_df("2025-01-15", "2025-12-15", "12000")
-    detail = build_deal_detail(active, pd.Timestamp("2025-01-01"))
+    detail = build_monthly_revenue(active, pd.Timestamp("2025-01-01"))
     assert _deal_month_sum(detail) == 12000
 
 
-def test_deal_detail_sums_to_amount_with_collected():
+def test_monthly_revenue_sums_to_amount_with_collected():
     """Partially-collected deal: months should sum to remaining amount."""
-    from src.revenue import build_deal_detail
+    from src.revenue import build_monthly_revenue
 
     active = _make_active_df(
         "2025-01-01", "2025-12-31", "12000", collected="6000"
@@ -150,5 +150,5 @@ def test_deal_detail_sums_to_amount_with_collected():
         }
     )
     active = add_columns(df, projection_start)
-    detail = build_deal_detail(active, projection_start)
+    detail = build_monthly_revenue(active, projection_start)
     assert _deal_month_sum(detail) == 6000

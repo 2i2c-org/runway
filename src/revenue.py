@@ -1,4 +1,4 @@
-"""Revenue projections: Monte Carlo simulation and deal detail breakdowns.
+"""Revenue projections: Monte Carlo simulation and monthly revenue breakdowns.
 
 This generates the monthly projections for each deal and the simulations for various scenarios.
 This is what ultimately goes into the runway calculation!
@@ -30,7 +30,7 @@ def _remaining(deal):
     return max(0, (0 if pd.isna(amt) else amt) - (0 if pd.isna(col) else col))
 
 
-def build_deal_detail(active_df, projection_start):
+def build_monthly_revenue(active_df, projection_start):
     """Spread monthly expected revenue across future months based on start date and expected monthly amount."""
 
     end_dates = pd.to_datetime(active_df["use_end_date"])

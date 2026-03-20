@@ -40,7 +40,7 @@ ACTIVE_TAB       = "HubSpot: Active"
 REMOVED_TAB      = "HubSpot: Removed"
 INACTIVE_TAB     = "HubSpot: Inactive"
 PROJECTIONS_TAB  = "Projections: Revenue"
-DEAL_DETAIL_TAB  = "Projections: Deal contribution by month"
+MONTHLY_REVENUE_TAB  = "Projections: Deal contribution by month"
 MAU_TAB          = "Hubs: MAUs"
 # fmt: on
 
@@ -154,7 +154,7 @@ def clean():
 def model(active_df, mau_revenue, projection_start):
     """Run Monte Carlo simulations and upload projections."""
     from src.assumptions import SIMULATION_RUNS
-    from src.revenue import build_deal_detail, build_projections
+    from src.revenue import build_monthly_revenue, build_projections
     from src.sheets_uploader import get_sheets_client, upload_dataframe
 
     client = get_sheets_client()
@@ -171,25 +171,25 @@ def model(active_df, mau_revenue, projection_start):
         if len(nonzero) > 0:
             print(f"    {scenario}: ${nonzero.mean():,.0f}/month avg")
 
-    deal_detail_df = build_deal_detail(active_df, projection_start=projection_start)
+    monthly_revenue_df = build_monthly_revenue(active_df, projection_start=projection_start)
 
     # Checks before uploading
     from src.checks import (
-        test_deal_detail_sums_match_amounts,
+        test_monthly_revenue_sums,
         test_monte_carlo_matches_weighted,
         test_scenario_ordering,
     )
 
     test_scenario_ordering(projections_df)
-    test_deal_detail_sums_match_amounts(deal_detail_df, active_df)
-    test_monte_carlo_matches_weighted(projections_df, deal_detail_df)
+    test_monthly_revenue_sums(monthly_revenue_df)
+    test_monte_carlo_matches_weighted(projections_df, monthly_revenue_df)
 
     upload_dataframe(
         client, SHEET_ID, projections_df.reset_index(), tab_name=PROJECTIONS_TAB
     )
     print(f"  ✅ {PROJECTIONS_TAB}: {len(projections_df)} scenarios")
-    upload_dataframe(client, SHEET_ID, deal_detail_df, tab_name=DEAL_DETAIL_TAB)
-    print(f"  ✅ {DEAL_DETAIL_TAB}: {len(deal_detail_df)} deals")
+    upload_dataframe(client, SHEET_ID, monthly_revenue_df, tab_name=MONTHLY_REVENUE_TAB)
+    print(f"  ✅ {MONTHLY_REVENUE_TAB}: {len(monthly_revenue_df)} deals")
 
     # Update timestamp in "Variables and info" tab
     spreadsheet = client.open_by_key(SHEET_ID)
