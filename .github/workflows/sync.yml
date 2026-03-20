@@ -20,6 +20,7 @@ jobs:
       - name: Install uv and nox
         run: pip install uv nox
 
+      # This should only have access to our Google Sheets API, it's so we can write to our budget model sheet
       - name: Write Google service account file
         run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service-account-key.json
 
