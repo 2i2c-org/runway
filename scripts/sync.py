@@ -84,7 +84,18 @@ def download():
         if not downloaded.exists():
             raise FileNotFoundError(f"Expected {downloaded} after downloading {tag}.")
         downloaded.rename(DATA_DIR / local_name)
-        print(f"  ✅ {asset} → {local_name}")
+        # Print when this release was last published
+        result = subprocess.run(
+            [
+                "gh", "release", "view", tag,
+                "--repo", "2i2c-org/data-private",
+                "--json", "publishedAt",
+                "--jq", ".publishedAt",
+            ],
+            capture_output=True, text=True, env=env,
+        )
+        published = result.stdout.strip()
+        print(f"  ✅ {asset} → {local_name} (published {published})")
 
 
 def clean():
