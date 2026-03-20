@@ -130,9 +130,7 @@ def test_monthly_revenue_sums_to_amount_with_collected():
     """Partially-collected deal: months should sum to remaining amount."""
     from src.revenue import build_monthly_revenue
 
-    active = _make_active_df(
-        "2025-01-01", "2025-12-31", "12000", collected="6000"
-    )
+    active = _make_active_df("2025-01-01", "2025-12-31", "12000", collected="6000")
     projection_start = pd.Timestamp("2025-07-01")
     # Re-run add_columns with the real projection_start for collected logic
     df = pd.DataFrame(

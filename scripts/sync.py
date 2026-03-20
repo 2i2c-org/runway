@@ -49,9 +49,10 @@ def download():
     """Download pre-built CSVs from the 2i2c-org/data-private repo."""
     DATA_DIR.mkdir(exist_ok=True)
 
+    # (release tag, remote asset name, local filename)
     releases = [
-        ("hubspot-latest", "deals_raw.csv"),
-        ("maus-latest", "mau_raw.csv"),
+        ("hubspot-latest", "hubspot-deals.csv", "deals_raw.csv"),
+        ("maus-latest", "maus-unique-by-cluster.csv", "mau_raw.csv"),
     ]
     # gh CLI uses GH_TOKEN env var for auth. In CI this is set directly;
     # locally it may be stored as GH_DATA_PRIVATE_TOKEN in .env.
@@ -60,8 +61,8 @@ def download():
     if token:
         env["GH_TOKEN"] = token
 
-    for tag, expected_file in releases:
-        print(f"  Downloading {tag}...", flush=True)
+    for tag, asset, local_name in releases:
+        print(f"  Downloading {tag}/{asset}...", flush=True)
         subprocess.run(
             [
                 "gh",
@@ -72,17 +73,18 @@ def download():
                 "2i2c-org/data-private",
                 "--dir",
                 str(DATA_DIR),
+                "--pattern",
+                asset,
                 "--clobber",
             ],
             check=True,
             env=env,
         )
-        path = DATA_DIR / expected_file
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Expected {path} after downloading {tag}, but it wasn't found."
-            )
-        print(f"  ✅ {expected_file} downloaded.")
+        downloaded = DATA_DIR / asset
+        if not downloaded.exists():
+            raise FileNotFoundError(f"Expected {downloaded} after downloading {tag}.")
+        downloaded.rename(DATA_DIR / local_name)
+        print(f"  ✅ {asset} → {local_name}")
 
 
 def clean():
@@ -171,7 +173,9 @@ def model(active_df, mau_revenue, projection_start):
         if len(nonzero) > 0:
             print(f"    {scenario}: ${nonzero.mean():,.0f}/month avg")
 
-    monthly_revenue_df = build_monthly_revenue(active_df, projection_start=projection_start)
+    monthly_revenue_df = build_monthly_revenue(
+        active_df, projection_start=projection_start
+    )
 
     # Checks before uploading
     from src.checks import (

@@ -81,9 +81,9 @@ def test_monthly_revenue_sums(monthly_revenue_df):
                 f"vs {active_months} months * ${monthly_rate:,.0f} "
                 f"= ${expected:,.0f}"
             )
-    assert not failures, (
-        "Monthly revenue sums don't match monthly rates:\n" + "\n".join(failures)
-    )
+    assert (
+        not failures
+    ), "Monthly revenue sums don't match monthly rates:\n" + "\n".join(failures)
 
 
 @check

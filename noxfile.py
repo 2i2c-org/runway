@@ -8,7 +8,7 @@ nox.options.reuse_existing_virtualenvs = True
 def test(session):
     """Run the unit test suite."""
     session.install("-r", "requirements.txt", "pytest")
-    session.env["PYTHONPATH"] = "." # So we can import our local module
+    session.env["PYTHONPATH"] = "."  # So we can import our local module
     session.run("pytest", "tests/")
 
 
