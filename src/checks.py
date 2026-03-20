@@ -66,15 +66,13 @@ def test_monthly_revenue_sums(monthly_revenue_df):
         monthly_rate = (
             pd.to_numeric(row.get("expected_monthly_revenue", 0), errors="coerce") or 0
         )
-        if monthly_rate < 500:
-            continue
         monthly_vals = pd.to_numeric(
             pd.Series([row[c] for c in month_cols]), errors="coerce"
         ).fillna(0)
         active_months = (monthly_vals > 0).sum()
         monthly_sum = monthly_vals.sum()
         expected = monthly_rate * active_months
-        # Skip small totals where rounding dominates
+        # Skip small totals where rounding can cause weird errors since the N is small
         if expected < 10000:
             continue
         if abs(monthly_sum - expected) > expected * 0.05:
