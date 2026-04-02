@@ -41,7 +41,7 @@ REMOVED_TAB      = "HubSpot: Removed"
 INACTIVE_TAB     = "HubSpot: Inactive"
 PROJECTIONS_TAB  = "Projections: Revenue"
 MONTHLY_REVENUE_TAB  = "Projections: Deal contribution by month"
-COMMITMENT_TAB   = "Projections: Total revenue commitment next 12 months"
+COMMITMENT_TAB   = "Projections: Full Committed Revenue by month"
 MAU_TAB          = "Hubs: MAUs"
 # fmt: on
 
@@ -167,8 +167,9 @@ def clean():
 
 def model(active_df, mau_revenue, projection_start):
     """Run Monte Carlo simulations and upload projections."""
-    from src.assumptions import INDICATOR_HORIZON_MONTHS, SIMULATION_RUNS
-    from src.revenue import build_monthly_revenue, build_projections, month_columns
+    from src.assumptions import SIMULATION_RUNS
+    from src.hubspot import add_columns
+    from src.revenue import build_monthly_revenue, build_projections
     from src.sheets_uploader import get_sheets_client, upload_dataframe
 
     client = get_sheets_client()
@@ -207,19 +208,15 @@ def model(active_df, mau_revenue, projection_start):
     upload_dataframe(client, SHEET_ID, monthly_revenue_df, tab_name=MONTHLY_REVENUE_TAB)
     print(f"  ✅ {MONTHLY_REVENUE_TAB}: {len(monthly_revenue_df)} deals")
 
-    # 12-month commitment view: pull relevant rows from projections,
-    # starting from projection_start (latest budget close + 1 month).
-    commitment_rows = ["Committed (total contract less gifts)", "Estimated"]
-    commitment_df = projections_df.loc[commitment_rows].copy()
-    start_label = projection_start.strftime("%Y-%m")
-    months = month_columns(commitment_df)
-    future_months = [m for m in months if m >= start_label]
-    keep = future_months[:INDICATOR_HORIZON_MONTHS]
-    commitment_df = commitment_df[keep]
-    upload_dataframe(
-        client, SHEET_ID, commitment_df.reset_index(), tab_name=COMMITMENT_TAB
-    )
-    print(f"  ✅ {COMMITMENT_TAB}: {len(keep)} months from {start_label}")
+    # Same deal-by-month breakdown but using full contract values (not subtracting what we've already invoiced).
+    # We use this to understand our total commitment levels over time by revenue type.
+    commitment_df = active_df.copy()
+    # Clearing amount_collected forces `add_columns` to use the full contract amount when calculating monthly_revenue.
+    commitment_df["amount_collected"] = None
+    commitment_active = add_columns(commitment_df, projection_start)
+    commitment_monthly = build_monthly_revenue(commitment_active, projection_start)
+    upload_dataframe(client, SHEET_ID, commitment_monthly, tab_name=COMMITMENT_TAB)
+    print(f"  ✅ {COMMITMENT_TAB}: {len(commitment_monthly)} deals")
 
     # Update timestamp in "Variables and info" tab
     spreadsheet = client.open_by_key(SHEET_ID)
