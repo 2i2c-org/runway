@@ -13,6 +13,12 @@ from src.assumptions import (
     SIMULATION_RUNS,
     SIMULATION_SEED,
 )
+from src.hubspot import months_between
+
+
+def month_columns(df):
+    """Return column names that represent months (formatted as YYYY-MM)."""
+    return [c for c in df.columns if len(c) == 7 and c[4] == "-" and c[:4].isdigit()]
 
 
 def _month_start(dt):
@@ -66,6 +72,7 @@ def build_monthly_revenue(active_df, projection_start):
 
         row = {
             "dealname": deal.get("dealname", ""),
+            "revenue_type": deal.get("revenue_type", ""),
             "dealstage": deal.get("dealstage", ""),
             "probability": deal_prob,
             "monthly_revenue": monthly_rev,
@@ -138,11 +145,23 @@ def build_projections(active_df, projection_start, mau_revenue=None):
 
     d_rev = active_df["monthly_revenue"].fillna(0).values
 
+    # Full-contract monthly revenue (amount / contract months, regardless of what we've invoiced).
+    # This gives the total commitment value for our capacity need projections
+    amount = pd.to_numeric(active_df["amount"], errors="coerce").fillna(0)
+    contract_months = months_between(d_start, d_end).clip(lower=1)
+    d_rev_full = (amount / contract_months).fillna(0).values
+
     # "Committed" deals have probability = 1 and always contribute
     committed_mask = d_prob >= 1.0
+    # Gifts are one-time contributions, not ongoing service commitments
+    not_gift = active_df.get("revenue_type", pd.Series()).fillna("") != "gift"
     committed_totals = np.zeros(n_months)
+    committed_full_totals = np.zeros(n_months)
     for i in range(n_months):
         committed_totals[i] = d_rev[committed_mask & active_mask[:, i]].sum()
+        committed_full_totals[i] = d_rev_full[
+            committed_mask & not_gift.values & active_mask[:, i]
+        ].sum()
 
     # Each simulation run flips a coin per deal: does it close or not?
     # A deal either contributes its full monthly revenue or nothing.
@@ -159,7 +178,9 @@ def build_projections(active_df, projection_start, mau_revenue=None):
 
     # Grab the percentiles for each simulation
     rows = {
+        # Committed (on the books) revenue
         "Committed": np.round(committed_totals).tolist(),
+        # These are all model results
         "Pessimistic": np.round(
             np.percentile(sim, SCENARIO_PERCENTILES["Pessimistic"], axis=0)
         ).tolist(),
@@ -176,6 +197,10 @@ def build_projections(active_df, projection_start, mau_revenue=None):
     rows["Estimated MAU revenue"] = [
         mau_revenue if m >= projection_start else 0.0 for m in months
     ]
+
+    # Full contract commitment (not subtracting already-invoiced amounts).
+    # Useful for understanding our total workload obligations.
+    rows["Committed (total contract less gifts)"] = np.round(committed_full_totals).tolist()
 
     result = pd.DataFrame(rows, index=month_labels).T
     result.index.name = "scenario"

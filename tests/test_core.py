@@ -1,5 +1,7 @@
 """Core unit tests for budget pipeline logic."""
 
+from pathlib import Path
+
 import pandas as pd
 
 from src.hubspot import add_columns
@@ -79,74 +81,58 @@ def test_monthly_revenue_with_collected():
     assert result["use_start_date"].iloc[0] == "2025-07-01"
 
 
-# --- Monthly revenue projection tests ---
+# --- Model checks on sample data ---
+
+# Sample deals are loaded from a CSV of 8 real deals copy/pasted from
+# deals_raw.csv on 2026-04-01. If the upstream HubSpot export schema
+# changes, update the CSV and the expected columns below.
+SAMPLE_DEALS_CSV = Path(__file__).parent / "sample_deals.csv"
+
+RAW_DEAL_COLUMNS = {
+    "id",
+    "dealname",
+    "revenue_type",
+    "amount",
+    "closedate",
+    "pipeline",
+    "dealstage",
+    "contract_start_date",
+    "contract_end_date",
+    "hs_mrr",
+    "hs_arr",
+    "target_start_date",
+    "target_end_date",
+    "hs_deal_stage_probability",
+    "hs_projected_amount",
+    "amount_collected",
+}
 
 
-def _make_active_df(start, end, amount, collected=None, prob="1"):
-    """Helper to build a minimal active deal DataFrame (post-add_columns)."""
-    df = pd.DataFrame(
-        {
-            "id": ["1"],
-            "dealname": ["Test Deal"],
-            "dealstage": ["Closed Won"],
-            "amount": [amount],
-            "amount_collected": [collected],
-            "contract_start_date": [start],
-            "contract_end_date": [end],
-            "target_start_date": [None],
-            "target_end_date": [None],
-            "hs_deal_stage_probability": [prob],
-        }
+def test_sample_data_matches_raw_schema():
+    """Fixture columns match real HubSpot CSV schema. Update both if schema changes."""
+    raw = pd.read_csv(SAMPLE_DEALS_CSV)
+    assert set(raw.columns) == RAW_DEAL_COLUMNS, (
+        f"Fixture columns don't match expected schema.\n"
+        f"  Missing: {RAW_DEAL_COLUMNS - set(raw.columns)}\n"
+        f"  Extra: {set(raw.columns) - RAW_DEAL_COLUMNS}"
     )
-    return add_columns(df, pd.Timestamp(start))
 
 
-def _deal_month_sum(detail):
-    """Sum the month columns for the first deal row (excludes TOTAL)."""
-    deal_row = detail.iloc[0]
-    month_cols = [c for c in detail.columns if c[:2] == "20"]
-    return pd.to_numeric(deal_row[month_cols], errors="coerce").fillna(0).sum()
-
-
-def test_monthly_revenue_sums_to_amount_month_aligned():
-    """Month-aligned deal: monthly columns should sum to the full amount."""
-    from src.revenue import build_monthly_revenue
-
-    active = _make_active_df("2025-01-01", "2025-12-31", "12000")
-    detail = build_monthly_revenue(active, pd.Timestamp("2025-01-01"))
-    assert _deal_month_sum(detail) == 12000
-
-
-def test_monthly_revenue_sums_to_amount_mid_month():
-    """Mid-month start/end: monthly columns should still sum to amount."""
-    from src.revenue import build_monthly_revenue
-
-    active = _make_active_df("2025-01-15", "2025-12-15", "12000")
-    detail = build_monthly_revenue(active, pd.Timestamp("2025-01-01"))
-    assert _deal_month_sum(detail) == 12000
-
-
-def test_monthly_revenue_sums_to_amount_with_collected():
-    """Partially-collected deal: months should sum to remaining amount."""
-    from src.revenue import build_monthly_revenue
-
-    active = _make_active_df("2025-01-01", "2025-12-31", "12000", collected="6000")
-    projection_start = pd.Timestamp("2025-07-01")
-    # Re-run add_columns with the real projection_start for collected logic
-    df = pd.DataFrame(
-        {
-            "id": ["1"],
-            "dealname": ["Test Deal"],
-            "dealstage": ["Closed Won"],
-            "amount": ["12000"],
-            "amount_collected": ["6000"],
-            "contract_start_date": ["2025-01-01"],
-            "contract_end_date": ["2025-12-31"],
-            "target_start_date": [None],
-            "target_end_date": [None],
-            "hs_deal_stage_probability": ["1"],
-        }
+def test_model_checks_on_sample_data():
+    """Run the model checks against real sample deals to catch regressions."""
+    from src.checks import (
+        test_monte_carlo_matches_weighted,
+        test_monthly_revenue_sums,
+        test_scenario_ordering,
     )
-    active = add_columns(df, projection_start)
-    detail = build_monthly_revenue(active, projection_start)
-    assert _deal_month_sum(detail) == 6000
+    from src.revenue import build_monthly_revenue, build_projections
+
+    projection_start = pd.Timestamp("2026-03-01")
+    active = add_columns(pd.read_csv(SAMPLE_DEALS_CSV), projection_start)
+
+    projections_df = build_projections(active, projection_start)
+    monthly_revenue_df = build_monthly_revenue(active, projection_start)
+
+    test_scenario_ordering(projections_df)
+    test_monthly_revenue_sums(monthly_revenue_df)
+    test_monte_carlo_matches_weighted(projections_df, monthly_revenue_df)

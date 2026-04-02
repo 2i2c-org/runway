@@ -13,3 +13,5 @@ SCENARIO_PERCENTILES = {
     "Pessimistic": 10,
     "Optimistic": 90,
 }
+
+INDICATOR_HORIZON_MONTHS = 12

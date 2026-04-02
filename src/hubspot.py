@@ -10,6 +10,7 @@ from src.assumptions import PIPELINE_STAGES
 # Preferred column order for deal tabs (most useful first)
 PREFERRED_COLUMNS = [
     "dealname",
+    "revenue_type",
     "amount",
     "amount_collected",
     "monthly_revenue",
@@ -33,7 +34,7 @@ def load_deals():
     return pd.read_csv(path)
 
 
-def _months_between(start, end):
+def months_between(start, end):
     """Count calendar months a deal spans (inclusive of both start and end months)."""
     return np.maximum(
         (end.dt.year - start.dt.year) * 12 + (end.dt.month - start.dt.month) + 1, 1
@@ -70,12 +71,12 @@ def add_columns(df, projection_start):
     collected = pd.to_numeric(df.get("amount_collected", 0), errors="coerce").fillna(0)
 
     has_data = start.notna() & end.notna() & amount.notna()
-    monthly = amount / _months_between(start, end)
+    monthly = amount / months_between(start, end)
 
     has_collected = has_data & (collected > 0)
     if has_collected.any():
         remaining = (amount - collected).clip(lower=0)
-        months_left = _months_between(pd.Series(projection_start, index=df.index), end)
+        months_left = months_between(pd.Series(projection_start, index=df.index), end)
         # .where keeps values where condition is True, replaces where False
         monthly = monthly.where(~has_collected, remaining / months_left)
         df.loc[has_collected, "use_start_date"] = str(projection_start.date())
