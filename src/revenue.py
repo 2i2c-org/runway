@@ -145,11 +145,19 @@ def build_projections(active_df, projection_start, mau_revenue=None):
 
     d_rev = active_df["monthly_revenue"].fillna(0).values
 
-    # Full-contract monthly revenue (amount / contract months, regardless of what we've invoiced).
-    # This gives the total commitment value for our capacity need projections
+    # Full-contract monthly revenue uses original contract dates (not shifted
+    # for collected amounts) so we see total commitment, not just what's left.
     amount = pd.to_numeric(active_df["amount"], errors="coerce").fillna(0)
-    contract_months = months_between(d_start, d_end).clip(lower=1)
-    d_rev_full = (amount / contract_months).fillna(0).values
+    c_start = pd.to_datetime(active_df["contract_start_date"])
+    c_end = pd.to_datetime(active_df["contract_end_date"])
+    c_months = months_between(c_start, c_end).clip(lower=1)
+    d_rev_full = (amount / c_months).fillna(0).values
+
+    # Build a separate active mask for commitment using original contract dates
+    commitment_mask = np.zeros((n_deals, n_months), dtype=bool)
+    for i, month in enumerate(months):
+        month_end = month + pd.DateOffset(months=1) - pd.DateOffset(days=1)
+        commitment_mask[:, i] = ((c_start <= month_end) & (c_end >= month)).values
 
     # "Committed" deals have probability = 1 and always contribute
     committed_mask = d_prob >= 1.0
@@ -160,7 +168,7 @@ def build_projections(active_df, projection_start, mau_revenue=None):
     for i in range(n_months):
         committed_totals[i] = d_rev[committed_mask & active_mask[:, i]].sum()
         committed_full_totals[i] = d_rev_full[
-            committed_mask & not_gift.values & active_mask[:, i]
+            committed_mask & not_gift.values & commitment_mask[:, i]
         ].sum()
 
     # Each simulation run flips a coin per deal: does it close or not?
