@@ -50,7 +50,8 @@ MONTHLY_REVENUE_TAB     = "Projections: Deal contribution by month"
 COMMITMENT_TAB          = "Projections: Full Committed Revenue by month"
 COMMITMENT_BY_TYPE_TAB  = "Projections: Full Committed Revenue by type"
 MAU_TAB                 = "Hubs: MAUs"
-VARIABLES_WS_ID         = 1523602458  # "Variables and info" tab - *readd* from this one
+FLAGGED_TAB             = "HubSpot: Flag for review"
+VARIABLES_WS_ID         = 1523602458  # "Variables and info" tab
 # fmt: on
 
 
@@ -193,6 +194,7 @@ if __name__ == "__main__":
         test_no_duplicate_deals,
         test_no_pipeline_deals_lost,
         test_scenario_revenue_projection_ordering,
+        flag_deals_for_review,
     )
     from src.revenue import (
         build_monthly_revenue,
@@ -230,6 +232,13 @@ if __name__ == "__main__":
     test_all_deals_accounted_for(df, active_df, removed_df, inactive_df)
     test_no_duplicate_deals(active_df, removed_df, inactive_df)
 
+    # Flag deals that may have data quality issues in HubSpot
+    flagged_df = flag_deals_for_review(df, projection_start)
+    if len(flagged_df) > 0:
+        print(f"  ⚠️  {len(flagged_df)} deal(s) flagged for review:")
+        for _, row in flagged_df.iterrows():
+            print(f"      - {row['dealname']}: {row['reason']}")
+
     # If our tests have passed, we save to disk and also upload for inspection!
     df.to_csv(DATA_DIR / "deals.csv", index=False)
     active_df.to_csv(DATA_DIR / "deals_active.csv", index=False)
@@ -244,6 +253,8 @@ if __name__ == "__main__":
     print(f"  ✅ {REMOVED_TAB}: {len(removed_df)} rows")
     upload_dataframe(client, SHEET_ID, inactive_df, tab_name=INACTIVE_TAB)
     print(f"  ✅ {INACTIVE_TAB}: {len(inactive_df)} rows")
+    upload_dataframe(client, SHEET_ID, flagged_df, tab_name=FLAGGED_TAB)
+    print(f"  ✅ {FLAGGED_TAB}: {len(flagged_df)} deals")
 
     # =========================================================================
     # MAU revenue

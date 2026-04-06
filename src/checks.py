@@ -95,6 +95,104 @@ def test_monthly_revenue_sums(monthly_revenue_df):
     ), "Monthly revenue sums don't match monthly rates:\n" + "\n".join(failures)
 
 
+def flag_deals_for_review(df, projection_start):
+    """Flag deals that may have data quality issues in HubSpot.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        All deals with derived columns (from ``add_columns``).
+    projection_start : pd.Timestamp
+        First day of the projection start month.
+
+    Returns
+    -------
+    pd.DataFrame
+        Flagged deals with columns for inspection and a ``reason`` column.
+    """
+    start = pd.to_datetime(df["effective_start_date"], errors="coerce")
+    end = pd.to_datetime(df["effective_end_date"], errors="coerce")
+    amount = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
+    collected = pd.to_numeric(
+        df.get("amount_collected", 0), errors="coerce"
+    ).fillna(0)
+    is_closed_won = df["dealstage"] == "Closed Won"
+    contract_start = pd.to_datetime(df["contract_start_date"], errors="coerce")
+    contract_end = pd.to_datetime(df["contract_end_date"], errors="coerce")
+
+    flags = {}
+
+    # Stale collection: started well before projection_start, nothing collected
+    stale_months_threshold = 6
+    threshold = projection_start - pd.DateOffset(months=stale_months_threshold)
+    flags[f"Stale: started {stale_months_threshold}+ months ago with $0 collected"] = (
+        is_closed_won & (start < threshold) & (collected <= 0)
+    )
+
+    # Over-collected: collected more than the deal amount
+    flags["Over-collected: amount_collected > amount"] = (
+        is_closed_won & (collected > amount) & (amount > 0)
+    )
+
+    # Missing contract dates on Closed Won (falling back to target dates)
+    flags["Missing contract dates on Closed Won deal"] = (
+        is_closed_won & (contract_start.isna() | contract_end.isna())
+    )
+
+    # Contract ended but not fully collected
+    flags["Contract ended but not fully collected"] = (
+        is_closed_won
+        & (end < projection_start)
+        & (collected < amount)
+        & (amount > 0)
+    )
+
+    # Contract ending soon with significant budget remaining
+    ending_soon_months = 3
+    min_remaining_fraction = 0.5
+    ending_soon = projection_start + pd.DateOffset(months=ending_soon_months)
+    remaining_fraction = ((amount - collected) / amount).where(amount > 0, 0)
+    flags[
+        f"Ending within {ending_soon_months} months"
+        f" with >{min_remaining_fraction:.0%} of budget remaining"
+    ] = (
+        is_closed_won
+        & (end <= ending_soon)
+        & (end >= projection_start)
+        & (remaining_fraction > min_remaining_fraction)
+    )
+
+    # Combine: one row per deal, with reasons joined
+    flagged_ids = set()
+    reasons = {}
+    for reason, mask in flags.items():
+        for idx in df.index[mask]:
+            flagged_ids.add(idx)
+            reasons.setdefault(idx, []).append(reason)
+
+    if not flagged_ids:
+        # Return empty DataFrame with expected columns
+        return pd.DataFrame(
+            columns=["dealname", "reason", "dealstage", "amount",
+                     "amount_collected", "effective_start_date",
+                     "effective_end_date", "monthly_revenue"]
+        )
+
+    flagged = df.loc[list(flagged_ids)].copy()
+    flagged["reason"] = flagged.index.map(
+        lambda idx: "; ".join(reasons[idx])
+    )
+    flagged["amount_remaining"] = (amount.loc[flagged.index] - collected.loc[flagged.index]).clip(lower=0)
+
+    display_cols = [
+        "dealname", "reason", "amount_remaining", "dealstage",
+        "amount", "amount_collected", "effective_start_date",
+        "effective_end_date", "monthly_revenue",
+    ]
+    result = flagged[[c for c in display_cols if c in flagged.columns]]
+    return result.sort_values("amount_remaining", ascending=False)
+
+
 @check
 def test_monte_carlo_matches_weighted(projections_df, monthly_revenue_df):
     """Monte Carlo 'estimated' scenario ≈ probability-weighted sums."""
