@@ -1,39 +1,41 @@
 # Budget Updates Pipeline
 
-Pulls deal data and MAU data from pre-built CSVs in [`2i2c-org/data-private`](https://github.com/2i2c-org/data-private), runs revenue projections, and uploads everything to the [budget spreadsheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8).
-## Usage
+Projects 2i2c's financial runway by combining HubSpot deal data with usage-based MAU revenue, modeling uncertainty via Monte Carlo simulation, and uploading results to the [budget spreadsheet](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8).
+
+## Quick start
 
 You'll need two things for authentication, both should be environment variables or in a `.env` file:
 
-- `GH_DATA_PRIVATE_TOKEN` - a GitHub token with read access to `2i2c-org/data-private`. Alternatively, authenticate via `gh auth login`.
-- `GOOGLE_SERVICE_ACCOUNT_FILE` allows us to push to google sheets. See [this guide](https://docs.gspread.org/en/latest/oauth2.html) for some context. Use [this service account](https://console.cloud.google.com/iam-admin/serviceaccounts/details/113674037014124702779;edit=true?previousPage=%2Fapis%2Fcredentials%3Fproject%3Dtwo-eye-two-see&project=two-eye-two-see).
-
-Then, to download the latest data and push to our Google Sheet:
+- `GH_DATA_PRIVATE_TOKEN` — a GitHub token with read access to `2i2c-org/data-private`. Alternatively, authenticate via `gh auth login`.
+- `GOOGLE_SERVICE_ACCOUNT_FILE` — allows us to push to Google Sheets. See [this guide](https://docs.gspread.org/en/latest/oauth2.html) for context. Use [this service account](https://console.cloud.google.com/iam-admin/serviceaccounts/details/113674037014124702779;edit=true?previousPage=%2Fapis%2Fcredentials%3Fproject%3Dtwo-eye-two-see&project=two-eye-two-see).
 
 ```bash
-nox -s sync
+nox -s sync   # Run the full pipeline
+nox -s test   # Run unit tests
 ```
 
-## What it does
+## How it works
 
-The pipeline has a few phases (controlled by `scripts/sync.py`):
+The pipeline orchestrator is [`scripts/sync.py`](scripts/sync.py) — **start there**. It reads as a top-to-bottom narrative where each step calls a helper, runs checks, and uploads results.
 
-1. **Download** - download pre-built CSVs from `2i2c-org/data-private` via `gh release download`. This should already be relatively clean (done in `data-private`).
-2. **Clean** - add a few extra columns we use to subset data etc.
-3. **Split** - we split deals into three groups for inspection in the google sheet:
-    - **Active** - Closed Won contracts that haven't expired + pipeline deals with complete data. These feed the revenue model.
-    - **Removed** - pipeline deals missing dates or amount. These need fixing in HubSpot.
-    - **Inactive** - everything else (expired contracts, etc).
-4. **Validate** - we run validations throughout this process and print their status to the terminal. These are in `tests/test_core.py` and they're printed with little ✅ in the logs when you run `nox -s sync`. You can also run those tests w/ `nox -s test` and it'll include some unit tests for specific functions (like the MAU revenue calculator).
-5. **Model** - we run a little model of *expected* revenue based on deal amounts and their probability of success. We take the 10th, 50th, and 90th percentile of these results (these are called "pessimistic", "estimated", and "optimistic").
-6. **Upload** - we upload the model results and several intermediate data representations for inspection.
+At a high level, the pipeline:
 
-The model results are then used by [our budget model](https://docs.google.com/spreadsheets/d/1IMIG2zrvMe-lSPngSLItCqZbP5Iw_6fNOPM5gZJSob8/edit?pli=1&gid=1812316711#gid=1812316711) to create runway projections.
+1. Downloads raw data from [`2i2c-org/data-private`](https://github.com/2i2c-org/data-private)
+2. Cleans, derives revenue columns, and categorizes deals
+3. Runs revenue projections (Monte Carlo simulation) and commitment projections (full contract obligations)
+4. Uploads everything to the budget spreadsheet
 
-## Tunable assumptions
+## Repository structure
 
-There are a few hard-coded assumptions in `src/assumptions.py` just to keep things explicit, though honestly there are probably other assumptions we're not quite reasoning with explicitly. The budget sheet should list some of these as well.
+- `scripts/sync.py` — pipeline orchestrator (the narrative)
+- `src/hubspot.py` — deal data: derived columns, categorization
+- `src/revenue.py` — Monte Carlo simulation, monthly breakdowns, revenue-by-type grouping
+- `src/checks.py` — inline data integrity checks
+- `src/mau.py` — MAU-based revenue calculation
+- `src/assumptions.py` — tunable constants (simulation runs, scenario percentiles, etc.)
+- `tests/test_core.py` — unit and integration tests
 
 ## Changing things
 
-There are some assumptions about **where to put data in the google sheet**, so if you need to move things around in the sheet (e.g. renaming tabs, moving important cells), then you'll probably need to update scripts here accordingly.
+- **Tunable assumptions** live in `src/assumptions.py`.
+- **Google Sheet tab names** and the worksheet ID are constants at the top of `scripts/sync.py`. If you rename tabs or move important cells in the sheet, update those constants.

@@ -14,9 +14,10 @@ PREFERRED_COLUMNS = [
     "amount",
     "amount_collected",
     "monthly_revenue",
+    "projection_monthly_revenue",
     "hs_deal_stage_probability",
-    "use_start_date",
-    "use_end_date",
+    "effective_start_date",
+    "effective_end_date",
     "dealstage",
 ]
 
@@ -35,7 +36,20 @@ def load_deals():
 
 
 def months_between(start, end):
-    """Count calendar months a deal spans (inclusive of both start and end months)."""
+    """Count calendar months a deal spans (inclusive of both start and end months).
+
+    Parameters
+    ----------
+    start : pd.Series
+        Start dates.
+    end : pd.Series
+        End dates.
+
+    Returns
+    -------
+    pd.Series
+        Number of months (minimum 1).
+    """
     return np.maximum(
         (end.dt.year - start.dt.year) * 12 + (end.dt.month - start.dt.month) + 1, 1
     )
@@ -48,40 +62,58 @@ def _reorder_columns(df, front):
 
 
 def add_columns(df, projection_start):
-    """Add use_start/end_date and monthly_revenue columns.
+    """Add effective dates, monthly_revenue, and projection_monthly_revenue.
 
-    projection_start: first month of projections. For partially-collected deals,
-    remaining revenue is spread from this date onwards.
+    - effective_start/end_date: best available contract date
+      (contract dates preferred over target dates)
+    - monthly_revenue: full contract rate (amount / full duration)
+    - projection_monthly_revenue: remaining revenue over remaining months
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Raw deals from HubSpot.
+    projection_start : pd.Timestamp
+        First day of the projection start month.
+
+    Returns
+    -------
+    pd.DataFrame
+        Deals with derived columns added, columns reordered.
     """
     df = df.copy()
 
     # HubSpot sometimes returns "" instead of null
     df = df.replace(r"^\s*$", pd.NA, regex=True)
 
-    # Contract dates trump target dates
-    df["use_start_date"] = df["contract_start_date"].fillna(df["target_start_date"])
-    df["use_end_date"] = df["contract_end_date"].fillna(df["target_end_date"])
+    # Contract dates trump estimated target dates
+    df["effective_start_date"] = df["contract_start_date"].fillna(
+        df["target_start_date"]
+    )
+    df["effective_end_date"] = df["contract_end_date"].fillna(df["target_end_date"])
 
-    # monthly_revenue = amount / contract_months normally.
-    # If amount_collected > 0, spread remaining amount over months from
-    # projection_start onwards and shift use_start_date to match.
-    start = pd.to_datetime(df["use_start_date"], errors="coerce")
-    end = pd.to_datetime(df["use_end_date"], errors="coerce")
+    start = pd.to_datetime(df["effective_start_date"], errors="coerce")
+    end = pd.to_datetime(df["effective_end_date"], errors="coerce")
     amount = pd.to_numeric(df["amount"], errors="coerce")
     collected = pd.to_numeric(df.get("amount_collected", 0), errors="coerce").fillna(0)
 
     has_data = start.notna() & end.notna() & amount.notna()
+
+    # Full contract rate (total contract amount / total active months)
     monthly = amount / months_between(start, end)
-
-    has_collected = has_data & (collected > 0)
-    if has_collected.any():
-        remaining = (amount - collected).clip(lower=0)
-        months_left = months_between(pd.Series(projection_start, index=df.index), end)
-        # .where keeps values where condition is True, replaces where False
-        monthly = monthly.where(~has_collected, remaining / months_left)
-        df.loc[has_collected, "use_start_date"] = str(projection_start.date())
-
     df["monthly_revenue"] = monthly.where(has_data).clip(lower=0).round(0)
+
+    # Projection rate - this is the *remaining* revenue over *remaining* months.
+    # This is different from "monthly_revenue" because:
+    #  1. We may have already invoiced some of the contract
+    #  2. The contract has already started but we *haven't* invoiced so expect the remaining amount over the *remaining* months.
+    remaining = (amount - collected).clip(lower=0)
+    proj_start = start.where(start >= projection_start, projection_start)
+    months_left = months_between(proj_start, end)
+    proj_monthly = remaining / months_left
+    df["projection_monthly_revenue"] = (
+        proj_monthly.where(has_data).clip(lower=0).round(0)
+    )
 
     # Normalize dates to YYYY-MM-DD strings
     for col in [c for c in df.columns if "date" in c]:
@@ -91,9 +123,22 @@ def add_columns(df, projection_start):
 
 
 def categorize_deals(df, projection_start):
-    """Split deals into active, removed, and inactive. Returns a dict."""
-    start = pd.to_datetime(df["use_start_date"], errors="coerce")
-    end = pd.to_datetime(df["use_end_date"], errors="coerce")
+    """Split deals into active, removed, and inactive.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Deals with derived columns (from `add_columns`).
+    projection_start : pd.Timestamp
+        First day of the projection start month.
+
+    Returns
+    -------
+    dict
+        Keys: "active", "removed", "inactive", each a DataFrame.
+    """
+    start = pd.to_datetime(df["effective_start_date"], errors="coerce")
+    end = pd.to_datetime(df["effective_end_date"], errors="coerce")
     amount = pd.to_numeric(df["amount"], errors="coerce")
     complete = start.notna() & end.notna() & amount.notna()
     is_pipeline = df["dealstage"].isin(PIPELINE_STAGES)
@@ -114,7 +159,7 @@ def categorize_deals(df, projection_start):
     removed["missing_fields"] = removed.apply(
         lambda row: ", ".join(
             col
-            for col in ["use_start_date", "use_end_date", "amount"]
+            for col in ["effective_start_date", "effective_end_date", "amount"]
             if pd.isna(row.get(col))
         ),
         axis=1,
@@ -126,8 +171,8 @@ def categorize_deals(df, projection_start):
             "dealname",
             "dealstage",
             "amount",
-            "use_start_date",
-            "use_end_date",
+            "effective_start_date",
+            "effective_end_date",
         ],
     )
 

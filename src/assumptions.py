@@ -13,3 +13,15 @@ SCENARIO_PERCENTILES = {
     "Pessimistic": 10,
     "Optimistic": 90,
 }
+
+# Preferred display order for revenue types in the "by type" tab.
+# Types not in this list will appear alphabetically after these.
+REVENUE_TYPE_ORDER = [
+    "gift",
+    "grant",
+    "project",
+    "membership-premier",
+    "membership-general",
+    "mrr_membership",
+    "unknown",
+]

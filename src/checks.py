@@ -3,7 +3,7 @@
 import pandas as pd
 
 from src.assumptions import PIPELINE_STAGES
-from src.revenue import month_columns
+from src.revenue import find_month_columns
 
 
 # This is a little wrapper that lets us print the docstring of a check as the success message
@@ -45,7 +45,7 @@ def test_no_duplicate_deals(active_df, removed_df, inactive_df):
 
 
 @check
-def test_scenario_ordering(projections_df):
+def test_scenario_revenue_projection_ordering(projections_df):
     """Scenarios ordered: Committed ≤ Pessimistic ≤ Estimated ≤ Optimistic."""
     order = ["Committed", "Pessimistic", "Estimated", "Optimistic"]
     present = [s for s in order if s in projections_df.index]
@@ -54,21 +54,22 @@ def test_scenario_ordering(projections_df):
             lo, hi = present[i], present[i + 1]
             lo_val = projections_df.loc[lo, col]
             hi_val = projections_df.loc[hi, col]
-            # Skip months where the optimistic scenario is $0 (far-future months with only low-probability deals too noisy to use in the test)
-            if hi_val == 0:
+            # Skip months with negligible revenue
+            # This is for months in the far future with *only* low-probability deals, where the predictions become unstable and often show $0)
+            if hi_val == 0 and lo_val < 1000:
                 continue
             # Allow a small tolerance so we just stay within sampling noise
             margin = hi_val * 0.05
-            assert lo_val <= hi_val + margin, (
-                f"{lo} (${lo_val:,.0f}) > {hi} (${hi_val:,.0f}) in {col}"
-            )
+            assert (
+                lo_val <= hi_val + margin
+            ), f"{lo} (${lo_val:,.0f}) > {hi} (${hi_val:,.0f}) in {col}"
 
 
 @check
 def test_monthly_revenue_sums(monthly_revenue_df):
     """Monthly revenue sums match expected_monthly_revenue * active months."""
     deals = monthly_revenue_df[monthly_revenue_df["dealname"] != "TOTAL"]
-    month_cols = month_columns(deals)
+    month_cols = find_month_columns(deals)
     failures = []
     for _, row in deals.iterrows():
         monthly_rate = (
@@ -96,11 +97,11 @@ def test_monthly_revenue_sums(monthly_revenue_df):
 
 @check
 def test_monte_carlo_matches_weighted(projections_df, monthly_revenue_df):
-    """Monte Carlo 'estimated' scenario ≈ probability-weighted sums (within 20%)."""
+    """Monte Carlo 'estimated' scenario ≈ probability-weighted sums."""
     total_row = monthly_revenue_df[monthly_revenue_df["dealname"] == "TOTAL"]
     # Only compare months that exist in both (they start from different dates)
-    detail_cols = set(month_columns(monthly_revenue_df))
-    month_cols = [c for c in month_columns(projections_df) if c in detail_cols]
+    detail_cols = set(find_month_columns(monthly_revenue_df))
+    month_cols = [c for c in find_month_columns(projections_df) if c in detail_cols]
     for col in month_cols:
         mc_val = projections_df.loc["Estimated", col]
         weighted_val = pd.to_numeric(total_row[col].iloc[0], errors="coerce") or 0

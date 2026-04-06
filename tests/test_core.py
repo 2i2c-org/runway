@@ -50,8 +50,11 @@ def test_monthly_revenue_simple():
     assert result["monthly_revenue"].iloc[0] == 1000.0
 
     # Derived date columns should be normalized to YYYY-MM-DD
-    assert result["use_start_date"].iloc[0] == "2025-01-01"
-    assert result["use_end_date"].iloc[0] == "2025-12-31"
+    assert result["effective_start_date"].iloc[0] == "2025-01-01"
+    assert result["effective_end_date"].iloc[0] == "2025-12-31"
+
+    # Projection rate: $12000 over 7 remaining months (Jun-Dec)
+    assert result["projection_monthly_revenue"].iloc[0] == 1714.0
 
 
 def test_monthly_revenue_with_collected():
@@ -62,7 +65,7 @@ def test_monthly_revenue_with_collected():
             "dealname": ["Partial Deal"],
             "dealstage": ["Closed Won"],
             "amount": ["12000"],
-            "amount_collected": ["6000"],
+            "amount_collected": ["8000"],
             "contract_start_date": ["2025-01-01"],
             "contract_end_date": ["2025-12-31"],
             "target_start_date": [None],
@@ -73,12 +76,51 @@ def test_monthly_revenue_with_collected():
     projection_start = pd.Timestamp("2025-07-01")
     result = add_columns(df, projection_start)
 
-    # Remaining = 12000 - 6000 = 6000
-    # Months from 2025-07-01 to 2025-12-31 ~ 6 months
+    # Full contract rate is unchanged: $12000 / 12 = $1000/month
     assert result["monthly_revenue"].iloc[0] == 1000.0
 
-    # use_start_date should be shifted to projection_start
-    assert result["use_start_date"].iloc[0] == "2025-07-01"
+    # effective_start_date stays at contract start (NOT shifted)
+    assert result["effective_start_date"].iloc[0] == "2025-01-01"
+
+    # Projection rate differs because we collected ahead of schedule:
+    # remaining $4000 / 6 months = $667/month
+    assert result["projection_monthly_revenue"].iloc[0] == 667.0
+
+
+def test_commitment_revenue_uses_full_contract():
+    """Commitment path should use full contract amount, not remaining."""
+    from src.revenue import build_monthly_revenue
+
+    df = pd.DataFrame(
+        {
+            "id": ["1"],
+            "dealname": ["Partial Deal"],
+            "dealstage": ["Closed Won"],
+            "revenue_type": ["membership-general"],
+            "amount": ["12000"],
+            "amount_collected": ["3000"],
+            "contract_start_date": ["2025-01-01"],
+            "contract_end_date": ["2025-12-31"],
+            "target_start_date": [None],
+            "target_end_date": [None],
+            "hs_deal_stage_probability": ["1"],
+        }
+    )
+    projection_start = pd.Timestamp("2025-07-01")
+    active = add_columns(df, projection_start)
+
+    # Commitment path: use full contract rate (monthly_revenue column)
+    # Full contract: $12000 / 12 months = $1000/month
+    # 6 months from projection_start (Jul-Dec 2025) = $6000 total
+    # Note: amount_collected should NOT affect this - commitment
+    # uses the full contract rate, not remaining amount.
+    result = build_monthly_revenue(
+        active, projection_start, revenue_column="monthly_revenue"
+    )
+    month_cols = [c for c in result.columns if len(c) == 7 and c[4] == "-"]
+    total_row = result[result["dealname"] == "TOTAL"]
+    total = total_row[month_cols].sum(axis=1).iloc[0]
+    assert total == 6000.0, f"Expected $6000 commitment revenue, got ${total}"
 
 
 # --- Model checks on sample data ---
@@ -123,16 +165,16 @@ def test_model_checks_on_sample_data():
     from src.checks import (
         test_monte_carlo_matches_weighted,
         test_monthly_revenue_sums,
-        test_scenario_ordering,
+        test_scenario_revenue_projection_ordering,
     )
-    from src.revenue import build_monthly_revenue, build_projections
+    from src.revenue import build_monthly_revenue, simulate_revenue_projections
 
     projection_start = pd.Timestamp("2026-03-01")
     active = add_columns(pd.read_csv(SAMPLE_DEALS_CSV), projection_start)
 
-    projections_df = build_projections(active, projection_start)
+    projections_df = simulate_revenue_projections(active, projection_start)
     monthly_revenue_df = build_monthly_revenue(active, projection_start)
 
-    test_scenario_ordering(projections_df)
+    test_scenario_revenue_projection_ordering(projections_df)
     test_monthly_revenue_sums(monthly_revenue_df)
     test_monte_carlo_matches_weighted(projections_df, monthly_revenue_df)
