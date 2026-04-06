@@ -28,7 +28,7 @@ def test_cluster_revenue_tiers():
 
 
 def test_monthly_revenue_simple():
-    """A deal with no amount_collected splits evenly over the contract."""
+    """A deal with no amount_collected estimates collection from elapsed time."""
     df = pd.DataFrame(
         {
             "id": ["1"],
@@ -46,15 +46,17 @@ def test_monthly_revenue_simple():
     projection_start = pd.Timestamp("2025-06-01")
     result = add_columns(df, projection_start)
 
-    # 12 months at ~30.44 days each -> 12 months -> $1000/month
+    # Full contract rate: $12000 / 12 months = $1000/month
     assert result["monthly_revenue"].iloc[0] == 1000.0
 
     # Derived date columns should be normalized to YYYY-MM-DD
     assert result["effective_start_date"].iloc[0] == "2025-01-01"
     assert result["effective_end_date"].iloc[0] == "2025-12-31"
 
-    # Projection rate: $12000 over 7 remaining months (Jun-Dec)
-    assert result["projection_monthly_revenue"].iloc[0] == 1714.0
+    # No amount_collected provided, so check that we estimate 5/12 of the total collected
+    # The projection_monthly_revenue should be the same as the "monthly revenue" in this case
+    assert result["projection_monthly_revenue"].iloc[0] == 1000.0
+    assert result["amount_collected_is_estimated"].iloc[0] == True  # noqa: E712
 
 
 def test_monthly_revenue_with_collected():

@@ -113,20 +113,24 @@ def flag_deals_for_review(df, projection_start):
     start = pd.to_datetime(df["effective_start_date"], errors="coerce")
     end = pd.to_datetime(df["effective_end_date"], errors="coerce")
     amount = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
-    collected = pd.to_numeric(
+    raw_collected = pd.to_numeric(
         df.get("amount_collected", 0), errors="coerce"
-    ).fillna(0)
+    )
+    collected_is_missing = raw_collected.isna()
+    collected = raw_collected.fillna(0)
+    # These flags only apply to Closed Won deals because these are delivery/invoicing checks
     is_closed_won = df["dealstage"] == "Closed Won"
     contract_start = pd.to_datetime(df["contract_start_date"], errors="coerce")
     contract_end = pd.to_datetime(df["contract_end_date"], errors="coerce")
 
     flags = {}
 
-    # Stale collection: started well before projection_start, nothing collected
+    # Stale collection: started well before projection_start,
+    # and amount_collected is missing (null, not explicit $0)
     stale_months_threshold = 6
     threshold = projection_start - pd.DateOffset(months=stale_months_threshold)
-    flags[f"Stale: started {stale_months_threshold}+ months ago with $0 collected"] = (
-        is_closed_won & (start < threshold) & (collected <= 0)
+    flags[f"Stale: started {stale_months_threshold}+ months ago with no collection data"] = (
+        is_closed_won & (start < threshold) & collected_is_missing
     )
 
     # Over-collected: collected more than the deal amount
@@ -134,8 +138,8 @@ def flag_deals_for_review(df, projection_start):
         is_closed_won & (collected > amount) & (amount > 0)
     )
 
-    # Missing contract dates on Closed Won (falling back to target dates)
-    flags["Missing contract dates on Closed Won deal"] = (
+    # Missing contract dates (falling back to target dates)
+    flags["Missing contract dates"] = (
         is_closed_won & (contract_start.isna() | contract_end.isna())
     )
 
@@ -162,6 +166,19 @@ def flag_deals_for_review(df, projection_start):
         & (remaining_fraction > min_remaining_fraction)
     )
 
+    # Estimated collection: amount_collected was missing so we estimated it
+    if "amount_collected_is_estimated" in df.columns:
+        flags["amount_collected was estimated from elapsed contract time"] = (
+            is_closed_won & df["amount_collected_is_estimated"].fillna(False)
+        )
+
+    display_cols = [
+        "dealname", "reason", "dealstage", "amount", "amount_collected",
+        "amount_remaining", "effective_start_date",
+        "effective_end_date", "monthly_revenue",
+        "projection_monthly_revenue",
+    ]
+
     # Combine: one row per deal, with reasons joined
     flagged_ids = set()
     reasons = {}
@@ -171,26 +188,18 @@ def flag_deals_for_review(df, projection_start):
             reasons.setdefault(idx, []).append(reason)
 
     if not flagged_ids:
-        # Return empty DataFrame with expected columns
-        return pd.DataFrame(
-            columns=["dealname", "reason", "dealstage", "amount",
-                     "amount_collected", "effective_start_date",
-                     "effective_end_date", "monthly_revenue"]
-        )
+        return pd.DataFrame(columns=display_cols)
 
     flagged = df.loc[list(flagged_ids)].copy()
     flagged["reason"] = flagged.index.map(
         lambda idx: "; ".join(reasons[idx])
     )
-    flagged["amount_remaining"] = (amount.loc[flagged.index] - collected.loc[flagged.index]).clip(lower=0)
+    flagged["amount_remaining"] = (
+        amount.loc[flagged.index] - collected.loc[flagged.index]
+    ).clip(lower=0)
 
-    display_cols = [
-        "dealname", "reason", "amount_remaining", "dealstage",
-        "amount", "amount_collected", "effective_start_date",
-        "effective_end_date", "monthly_revenue",
-    ]
     result = flagged[[c for c in display_cols if c in flagged.columns]]
-    return result.sort_values("amount_remaining", ascending=False)
+    return result.sort_values("projection_monthly_revenue", ascending=False)
 
 
 @check

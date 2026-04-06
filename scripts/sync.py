@@ -232,8 +232,8 @@ if __name__ == "__main__":
     test_all_deals_accounted_for(df, active_df, removed_df, inactive_df)
     test_no_duplicate_deals(active_df, removed_df, inactive_df)
 
-    # Flag deals that may have data quality issues in HubSpot
-    flagged_df = flag_deals_for_review(df, projection_start)
+    # Flag active deals that may have data quality issues in HubSpot
+    flagged_df = flag_deals_for_review(active_df, projection_start)
     if len(flagged_df) > 0:
         print(f"  ⚠️  {len(flagged_df)} deal(s) flagged for review:")
         for _, row in flagged_df.iterrows():

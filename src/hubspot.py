@@ -95,21 +95,38 @@ def add_columns(df, projection_start):
     start = pd.to_datetime(df["effective_start_date"], errors="coerce")
     end = pd.to_datetime(df["effective_end_date"], errors="coerce")
     amount = pd.to_numeric(df["amount"], errors="coerce")
-    collected = pd.to_numeric(df.get("amount_collected", 0), errors="coerce").fillna(0)
+    raw_collected = pd.to_numeric(
+        df.get("amount_collected", 0), errors="coerce"
+    )
+    # null means HubSpot has no data; explicit $0 means nothing collected yet
+    collected_is_missing = raw_collected.isna()
+    raw_collected = raw_collected.fillna(0)
 
     has_data = start.notna() & end.notna() & amount.notna()
+    total_months = months_between(start, end)
 
-    # Full contract rate (total contract amount / total active months)
-    monthly = amount / months_between(start, end)
+    # How much time has passed in the contract?
+    # Use this to estimate collection when HubSpot has no data, and to calculate remaining months.
+    ps = pd.Series(projection_start, index=df.index)
+    months_elapsed = np.maximum(
+        (ps.dt.year - start.dt.year) * 12 + (ps.dt.month - start.dt.month), 0
+    )
+    months_elapsed = np.minimum(months_elapsed, total_months)
+
+    # When HubSpot has no collection data, assume we've collected proportional to how far through the contract we are.
+    elapsed_fraction = (months_elapsed / total_months).clip(0, 1)
+    estimated_collected = (amount * elapsed_fraction).round(0)
+    missing_collected = has_data & collected_is_missing
+    collected = raw_collected.where(~missing_collected, estimated_collected)
+    df["amount_collected_is_estimated"] = missing_collected & has_data
+
+    # Full contract rate: what the deal is worth per month over its full duration
+    monthly = amount / total_months
     df["monthly_revenue"] = monthly.where(has_data).clip(lower=0).round(0)
 
-    # Projection rate - this is the *remaining* revenue over *remaining* months.
-    # This is different from "monthly_revenue" because:
-    #  1. We may have already invoiced some of the contract
-    #  2. The contract has already started but we *haven't* invoiced so expect the remaining amount over the *remaining* months.
+    # Projection rate: what we expect to receive per month going forward
     remaining = (amount - collected).clip(lower=0)
-    proj_start = start.where(start >= projection_start, projection_start)
-    months_left = months_between(proj_start, end)
+    months_left = np.maximum(total_months - months_elapsed, 1)
     proj_monthly = remaining / months_left
     df["projection_monthly_revenue"] = (
         proj_monthly.where(has_data).clip(lower=0).round(0)
