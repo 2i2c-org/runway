@@ -51,6 +51,7 @@ COMMITMENT_TAB          = "Projections: Full Committed Revenue by month"
 COMMITMENT_BY_TYPE_TAB  = "Projections: Full Committed Revenue by type"
 MAU_TAB                 = "Hubs: MAUs"
 FLAGGED_TAB             = "HubSpot: Flag for review"
+HEALTH_TAB              = "Projections: Health metrics"
 VARIABLES_WS_ID         = 1523602458  # "Variables and info" tab
 # fmt: on
 
@@ -105,24 +106,16 @@ def download():
         print(f"  ✅ {asset} → {local_name} (published {published})")
 
 
-def get_projection_start(client):
-    """Read the projection start date from the Google Sheet.
-
-    Projections start the month after the latest budget close date,
-    which is maintained manually in the 'Variables and info' tab.
-
-    Parameters
-    ----------
-    client : gspread.Client
-        Authenticated Google Sheets client.
-
-    Returns
-    -------
-    pd.Timestamp
-        First day of the projection start month.
+def get_sheet_variables(client):
+    """Read configuration variables from the 'Variables and info' tab.
+    
+    THESE ARE SUPER HARD-CODED. If we change the google sheet, this will break!
+    Is this hacky? Hell yes it is!
     """
     spreadsheet = client.open_by_key(SHEET_ID)
     ws = spreadsheet.get_worksheet_by_id(VARIABLES_WS_ID)
+
+    # Projection start: month after latest budget close
     close_cell = ws.find("Latest budget close")
     close_date = pd.to_datetime(ws.cell(close_cell.row, close_cell.col + 1).value)
     ps = close_date + pd.DateOffset(months=1)
@@ -131,7 +124,29 @@ def get_projection_start(client):
         f"  Last budget close: {close_date.strftime('%Y-%m')},"
         f" projections start: {projection_start.strftime('%Y-%m')}"
     )
-    return projection_start
+
+    # FSP fee
+    fsp_fee = float(ws.cell(8, 2).value)
+    print(f"  FSP fee: {fsp_fee:.0%}")
+
+    # Net assets at the end of the last month's books close
+    cash_on_hand = pd.to_numeric(
+        ws.cell(10, 2).value.replace("$", "").replace(",", "").strip()
+    )
+    print(f"  Net assets: ${cash_on_hand:,.0f}")
+
+    # Monthly costs before FSP fee (stored as negative in the sheet)
+    monthly_costs = abs(
+        pd.to_numeric(ws.cell(11, 2).value.replace("$", "").replace(",", "").strip())
+    )
+    print(f"  Monthly costs (before FSP): ${monthly_costs:,.0f}")
+
+    return {
+        "projection_start": projection_start,
+        "fsp_fee": fsp_fee,
+        "cash_on_hand": cash_on_hand,
+        "monthly_costs": monthly_costs,
+    }
 
 
 def build_deals(raw_df, projection_start):
@@ -222,7 +237,11 @@ if __name__ == "__main__":
     # then split into active (used for projections), removed (missing data),
     # and inactive (expired).
     print("\nClean & categorize")
-    projection_start = get_projection_start(client)
+    sheet_vars = get_sheet_variables(client)
+    projection_start = sheet_vars["projection_start"]
+    fsp_fee = sheet_vars["fsp_fee"]
+    cash_on_hand = sheet_vars["cash_on_hand"]
+    monthly_costs = sheet_vars["monthly_costs"]
     # This is what we downloaded with download()
     raw_df = pd.read_csv(DATA_DIR / "deals_raw.csv")
     # Categorize into various types of deals for projections
@@ -367,6 +386,7 @@ if __name__ == "__main__":
         client, SHEET_ID, by_type.reset_index(), tab_name=COMMITMENT_BY_TYPE_TAB
     )
     print(f"  ✅ {COMMITMENT_BY_TYPE_TAB}: {len(by_type)} rows")
+
 
     # =========================================================================
     # Update timestamp
