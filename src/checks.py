@@ -113,9 +113,7 @@ def flag_deals_for_review(df, projection_start):
     start = pd.to_datetime(df["effective_start_date"], errors="coerce")
     end = pd.to_datetime(df["effective_end_date"], errors="coerce")
     amount = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
-    raw_collected = pd.to_numeric(
-        df.get("amount_collected", 0), errors="coerce"
-    )
+    raw_collected = pd.to_numeric(df.get("amount_collected", 0), errors="coerce")
     collected_is_missing = raw_collected.isna()
     collected = raw_collected.fillna(0)
     # These flags only apply to Closed Won deals because these are delivery/invoicing checks
@@ -129,26 +127,23 @@ def flag_deals_for_review(df, projection_start):
     # and amount_collected is missing (null, not explicit $0)
     stale_months_threshold = 6
     threshold = projection_start - pd.DateOffset(months=stale_months_threshold)
-    flags[f"Stale: started {stale_months_threshold}+ months ago with no collection data"] = (
-        is_closed_won & (start < threshold) & collected_is_missing
-    )
+    flags[
+        f"Stale: started {stale_months_threshold}+ months ago with no collection data"
+    ] = (is_closed_won & (start < threshold) & collected_is_missing)
 
-    # Over-collected: collected more than the deal amount
-    flags["Over-collected: amount_collected > amount"] = (
-        is_closed_won & (collected > amount) & (amount > 0)
+    # Over-collected: collected more than 10% above the deal amount
+    flags["Over-collected: amount_collected > 110% of amount"] = (
+        is_closed_won & (collected > amount * 1.10) & (amount > 0)
     )
 
     # Missing contract dates (falling back to target dates)
-    flags["Missing contract dates"] = (
-        is_closed_won & (contract_start.isna() | contract_end.isna())
+    flags["Missing contract dates"] = is_closed_won & (
+        contract_start.isna() | contract_end.isna()
     )
 
     # Contract ended but not fully collected
     flags["Contract ended but not fully collected"] = (
-        is_closed_won
-        & (end < projection_start)
-        & (collected < amount)
-        & (amount > 0)
+        is_closed_won & (end < projection_start) & (collected < amount) & (amount > 0)
     )
 
     # Contract ending soon with significant budget remaining
@@ -173,9 +168,15 @@ def flag_deals_for_review(df, projection_start):
         )
 
     display_cols = [
-        "dealname", "reason", "dealstage", "amount", "amount_collected",
-        "amount_remaining", "effective_start_date",
-        "effective_end_date", "monthly_revenue",
+        "dealname",
+        "reason",
+        "dealstage",
+        "amount",
+        "amount_collected",
+        "amount_remaining",
+        "effective_start_date",
+        "effective_end_date",
+        "monthly_revenue",
         "projection_monthly_revenue",
     ]
 
@@ -191,9 +192,7 @@ def flag_deals_for_review(df, projection_start):
         return pd.DataFrame(columns=display_cols)
 
     flagged = df.loc[list(flagged_ids)].copy()
-    flagged["reason"] = flagged.index.map(
-        lambda idx: "; ".join(reasons[idx])
-    )
+    flagged["reason"] = flagged.index.map(lambda idx: "; ".join(reasons[idx]))
     flagged["amount_remaining"] = (
         amount.loc[flagged.index] - collected.loc[flagged.index]
     ).clip(lower=0)
