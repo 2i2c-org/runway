@@ -205,7 +205,7 @@ def simulate_revenue_projections(active_df, projection_start, mau_revenue=None):
     committed_totals = np.zeros(n_months)
     committed_full_totals = np.zeros(n_months)
     for i in range(n_months):
-        # committed_totals uses active_mask (stargin w/ projection_start) and projection rate
+        # committed_totals uses active_mask (starting w/ projection_start) and projection rate
         # This is what we expect to *receive* going forward
         committed_totals[i] = d_rev[committed_mask & active_mask[:, i]].sum()
         # committed_full_totals uses commitment_mask (full contract period) and full contract rate.
@@ -260,7 +260,9 @@ def simulate_revenue_projections(active_df, projection_start, mau_revenue=None):
     return result
 
 
-def build_revenue_by_type(commitment_monthly, pipeline_monthly, projection_start, n_months=24):
+def build_revenue_by_type(
+    commitment_monthly, pipeline_monthly, projection_start, n_months=24
+):
     """Group commitment and pipeline revenue by type for charting.
 
     Groups per-deal monthly breakdowns by revenue_type, with committed
