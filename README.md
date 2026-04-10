@@ -18,7 +18,14 @@ nox -s test   # Run unit tests
 
 The pipeline orchestrator is [`scripts/sync.py`](scripts/sync.py). It reads as a top-to-bottom narrative where each step calls a helper, runs checks, and uploads results.
 
-At a high level, the pipeline:
+At a high level, we have these data sources:
+
+- **`2i2c-org/data-private`**: A private repository that publishes the following two datasets each day in a release:
+  - **Prometheus**: Unique MAUs per cluster. Used to calculate MAUs.
+  - **HubSpot**: Deals and revenue collected for prospective and committed contracts.
+- **Google Sheets**: We load in some data from our budget google sheet (like our cash on hand).
+
+The pipeline does the following:
 
 1. Downloads raw data from [`2i2c-org/data-private`](https://github.com/2i2c-org/data-private)
 2. Cleans, derives revenue columns, and categorizes deals
