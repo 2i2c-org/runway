@@ -29,6 +29,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 from dotenv import load_dotenv
 
+from src.indicators import build_scorecard
+
 load_dotenv()
 
 ROOT = Path(__file__).parent.parent
@@ -126,18 +128,21 @@ def get_sheet_variables(client):
     )
 
     # FSP fee
-    fsp_fee = float(ws.cell(8, 2).value)
+    fsp_cell = ws.find("FSP Fee")
+    fsp_fee = float(ws.cell(fsp_cell.row, fsp_cell.col + 1).value)
     print(f"  FSP fee: {fsp_fee:.0%}")
 
     # Net assets at the end of the last month's books close
+    na_cell = ws.find("Net assets - end of last books close")
     cash_on_hand = pd.to_numeric(
-        ws.cell(10, 2).value.replace("$", "").replace(",", "").strip()
+        ws.cell(na_cell.row, na_cell.col + 1).value.replace("$", "").replace(",", "").strip()
     )
     print(f"  Net assets: ${cash_on_hand:,.0f}")
 
     # Monthly costs before FSP fee (stored as negative in the sheet)
+    mc_cell = ws.find("Average cost without FSP fee")
     monthly_costs = abs(
-        pd.to_numeric(ws.cell(11, 2).value.replace("$", "").replace(",", "").strip())
+        pd.to_numeric(ws.cell(mc_cell.row, mc_cell.col + 1).value.replace("$", "").replace(",", "").strip())
     )
     print(f"  Monthly costs (before FSP): ${monthly_costs:,.0f}")
 
@@ -387,6 +392,23 @@ if __name__ == "__main__":
     )
     print(f"  ✅ {COMMITMENT_BY_TYPE_TAB}: {len(by_type)} rows")
 
+    # =========================================================================
+    # Financial health scorecard
+    # =========================================================================
+    # Calculate key health indicators with red/yellow/green status.
+    print("\nFinancial health scorecard")
+    scorecard = build_scorecard(
+        projections_df,
+        monthly_costs,
+        fsp_fee,
+        cash_on_hand=cash_on_hand,
+        projection_start=projection_start,
+    )
+    for _, row in scorecard.iterrows():
+        print(f"  {row['status']} {row['metric']}: {row['value']} - {row['detail']}")
+
+    upload_dataframe(client, SHEET_ID, scorecard, tab_name=HEALTH_TAB)
+    print(f"  ✅ {HEALTH_TAB}: {len(scorecard)} metrics")
 
     # =========================================================================
     # Update timestamp

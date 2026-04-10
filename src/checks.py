@@ -131,9 +131,10 @@ def flag_deals_for_review(df, projection_start):
         f"Stale: started {stale_months_threshold}+ months ago with no collection data"
     ] = (is_closed_won & (start < threshold) & collected_is_missing)
 
-    # Over-collected: collected more than 10% above the deal amount
-    flags["Over-collected: amount_collected > 110% of amount"] = (
-        is_closed_won & (collected > amount * 1.10) & (amount > 0)
+    # Over-collected: collected more than the deal amount.
+    # We allow 15% tolerance because small overages are common with usage-based billing.
+    flags["Over-collected: amount_collected > 115% of amount"] = (
+        is_closed_won & (collected > amount * 1.15) & (amount > 0)
     )
 
     # Missing contract dates (falling back to target dates)

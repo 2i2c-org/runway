@@ -174,9 +174,80 @@ def test_model_checks_on_sample_data():
     projection_start = pd.Timestamp("2026-03-01")
     active = add_columns(pd.read_csv(SAMPLE_DEALS_CSV), projection_start)
 
-    projections_df = simulate_revenue_projections(active, projection_start)
+    projections_df = simulate_revenue_projections(
+        active, projection_start, mau_revenue=0
+    )
     monthly_revenue_df = build_monthly_revenue(active, projection_start)
 
     test_scenario_revenue_projection_ordering(projections_df)
     test_monthly_revenue_sums(monthly_revenue_df)
     test_monte_carlo_matches_weighted(projections_df, monthly_revenue_df)
+
+
+# --- Health scorecard tests ---
+
+
+def _build_scorecard_from_sample(monthly_costs, fsp_fee=0.15, cash_on_hand=500_000):
+    """Helper: build scorecard from sample deals with given cost assumptions."""
+    from src.indicators import build_scorecard
+    from src.revenue import simulate_revenue_projections
+
+    projection_start = pd.Timestamp("2026-03-01")
+    active = add_columns(pd.read_csv(SAMPLE_DEALS_CSV), projection_start)
+    projections_df = simulate_revenue_projections(
+        active, projection_start, mau_revenue=0
+    )
+    return build_scorecard(
+        projections_df,
+        monthly_costs=monthly_costs,
+        fsp_fee=fsp_fee,
+        cash_on_hand=cash_on_hand,
+        projection_start=projection_start,
+    )
+
+
+def test_scorecard_surplus_status_varies_with_costs():
+    """Very low costs → yellow (over-performing), high costs → red."""
+    low = _build_scorecard_from_sample(monthly_costs=1000)
+    high = _build_scorecard_from_sample(monthly_costs=999999)
+
+    low_surplus = low[low["metric"] == "Committed monthly surplus/deficit"]
+    high_surplus = high[high["metric"] == "Committed monthly surplus/deficit"]
+    assert "❗" in low_surplus["status"].iloc[0]
+    assert "🔴" in high_surplus["status"].iloc[0]
+
+
+def test_scorecard_runway_varies_with_costs():
+    """Very low costs → yellow (over-performing), high costs → red."""
+    low = _build_scorecard_from_sample(monthly_costs=1000)
+    high = _build_scorecard_from_sample(monthly_costs=999999)
+
+    low_runway = low[low["metric"] == "Committed revenue runway"]
+    high_runway = high[high["metric"] == "Committed revenue runway"]
+    assert "❗" in low_runway["status"].iloc[0]
+    assert "🔴" in high_runway["status"].iloc[0]
+
+
+# --- Edge case tests for health scorecard ---
+
+
+def test_fewer_months_than_window():
+    """Near end of contracts, fewer months than the expected window shouldn't crash."""
+    from src.indicators import _pipeline_coverage, _surplus_deficit
+
+    result = _surplus_deficit(
+        committed=pd.Series({"2026-03": 50000}),
+        months=["2026-03"],
+        monthly_costs=10000,
+        fsp_fee=0.15,
+    )
+    assert result["status"] in {"green", "yellow", "red", "over"}
+
+    projections = pd.DataFrame(
+        {"2026-03": [8000, 10000], "2026-04": [8000, 10000]},
+        index=["Committed", "Estimated"],
+    )
+    result = _pipeline_coverage(
+        projections, ["2026-03", "2026-04"], monthly_costs=10000, fsp_fee=0.15
+    )
+    assert result["status"] in {"green", "yellow", "red", "over"}
